@@ -4,8 +4,8 @@
  * Garza MCP — Unified MCP Server
  * Combines ProtonMail (SMTP/IMAP via Proton Bridge), Proton Drive, iCloud Drive,
  * Beeper (unified messaging across WhatsApp, Telegram, Signal, iMessage, etc.),
- * Fabric AI (memory/notes/search), and FreeScout (helpdesk) into a single MCP
- * server exposed over stdio (wrapped by mcp-proxy for HTTP).
+ * and Fabric AI (memory/notes/search) into a single MCP server exposed over
+ * stdio (wrapped by mcp-proxy for HTTP).
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -22,7 +22,6 @@ import { DriveService } from './services/drive-service.js';
 import { BeeperService } from './services/beeper-service.js';
 import { BeeperDbService } from './services/beeper-db-service.js';
 import { FabricService } from './services/fabric-service.js';
-import { FreeScoutService } from './services/freescout-service.js';
 import { logger } from './utils/logger.js';
 import { parseEmails } from './utils/helpers.js';
 
@@ -40,8 +39,7 @@ const BEEPER_TOKEN = process.env.BEEPER_TOKEN || '';
 const BEEPER_DB_PATH = process.env.BEEPER_DB_PATH || '/Users/customer/Library/Application Support/BeeperTexts/index.db';
 const FABRIC_API_KEY = process.env.FABRIC_API_KEY || '';
 const FABRIC_API_URL = process.env.FABRIC_API_URL || 'https://api.fabric.so';
-const FREESCOUT_URL = process.env.FREESCOUT_URL || '';
-const FREESCOUT_API_KEY = process.env.FREESCOUT_API_KEY || '';
+
 const DEBUG = process.env.DEBUG === 'true';
 
 logger.setDebugMode(DEBUG);
@@ -79,7 +77,7 @@ const icloud = new DriveService(ICLOUD_DRIVE_PATH, 'iCloud');
 const beeper = new BeeperService(BEEPER_API_URL, BEEPER_TOKEN);
 const beeperDb = new BeeperDbService(BEEPER_DB_PATH);
 const fabric = FABRIC_API_KEY ? new FabricService(FABRIC_API_KEY, FABRIC_API_URL) : null;
-const freescout = (FREESCOUT_URL && FREESCOUT_API_KEY) ? new FreeScoutService(FREESCOUT_URL, FREESCOUT_API_KEY) : null;
+
 
 // ── MCP Server ───────────────────────────────────────────────────────────────
 const server = new Server(
@@ -301,7 +299,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     // ═══════════════════════════ ICLOUD DRIVE ═════════════════════════
     ...driveToolDefs("icloud", "iCloud Drive"),
 
-    // ═══════════════════════════ BEEPER (MESSAGING) ══════════════════
+    // ═══════════════════════════ BEEPER (MESSAGING + DATABASE) ═════
     {
       name: "beeper_list_accounts",
       description: "List all connected messaging accounts (WhatsApp, Telegram, Signal, iMessage, Slack, Discord, etc.)",
@@ -456,7 +454,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
 
-    // ── Beeper Database Tools (local SQLite — 8M+ messages, FTS) ──────────
+    // ── Beeper Database (local SQLite — 8M+ messages, FTS) ────────────────
     {
       name: "beeper_db_stats",
       description: "Get statistics about the local Beeper chat database (total threads, messages, participants, date range)",
@@ -641,106 +639,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     ] : []),
 
-    // ═══════════════════════════ FREESCOUT (HELPDESK) ══════════════════
-    ...(freescout ? [
-      {
-        name: "helpdesk_list_tickets",
-        description: "List helpdesk tickets/conversations with optional status filter",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            mailboxId: { type: "number", description: "Filter by mailbox ID" },
-            status: { type: "string", enum: ["active", "pending", "closed", "spam"], description: "Filter by status (default: active)" },
-            page: { type: "number", description: "Page number for pagination" },
-          },
-        },
-      },
-      {
-        name: "helpdesk_get_ticket",
-        description: "Get full details of a specific helpdesk ticket including conversation threads",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            conversationId: { type: "number", description: "Conversation/ticket ID" },
-          },
-          required: ["conversationId"],
-        },
-      },
-      {
-        name: "helpdesk_create_ticket",
-        description: "Create a new helpdesk ticket/conversation",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            mailboxId: { type: "number", description: "Mailbox ID to create in" },
-            subject: { type: "string", description: "Ticket subject" },
-            customerEmail: { type: "string", description: "Customer email address" },
-            customerFirstName: { type: "string", description: "Customer first name" },
-            body: { type: "string", description: "Initial message body (HTML)" },
-            status: { type: "string", enum: ["active", "pending", "closed"], description: "Initial status" },
-          },
-          required: ["mailboxId", "subject", "customerEmail", "body"],
-        },
-      },
-      {
-        name: "helpdesk_reply",
-        description: "Reply to or add a note on a helpdesk ticket",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            conversationId: { type: "number", description: "Conversation/ticket ID" },
-            body: { type: "string", description: "Reply body (HTML)" },
-            type: { type: "string", enum: ["reply", "note"], description: "Thread type (default: reply)" },
-          },
-          required: ["conversationId", "body"],
-        },
-      },
-      {
-        name: "helpdesk_update_ticket",
-        description: "Update ticket status, assignment, or subject",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            conversationId: { type: "number", description: "Conversation/ticket ID" },
-            status: { type: "string", enum: ["active", "pending", "closed", "spam"] },
-            assignTo: { type: "number", description: "User ID to assign to" },
-            subject: { type: "string", description: "New subject" },
-          },
-          required: ["conversationId"],
-        },
-      },
-      {
-        name: "helpdesk_list_customers",
-        description: "List helpdesk customers with pagination",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            page: { type: "number", description: "Page number" },
-          },
-        },
-      },
-      {
-        name: "helpdesk_search_customers",
-        description: "Search helpdesk customers by name or email",
-        inputSchema: {
-          type: "object" as const,
-          properties: {
-            query: { type: "string", description: "Search query (name or email)" },
-          },
-          required: ["query"],
-        },
-      },
-      {
-        name: "helpdesk_list_mailboxes",
-        description: "List all helpdesk mailboxes/departments",
-        inputSchema: { type: "object" as const, properties: {} },
-      },
-      {
-        name: "helpdesk_list_agents",
-        description: "List all helpdesk agents/users",
-        inputSchema: { type: "object" as const, properties: {} },
-      },
-    ] : []),
+
   ],
 }));
 
@@ -1106,65 +1005,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
-    // ─── FREESCOUT HELPDESK ───────────────────────────────────────────
-    if (name.startsWith('helpdesk_') && freescout) {
-      const a = (args || {}) as Record<string, any>;
-      switch (name) {
-        case 'helpdesk_list_tickets': {
-          const data = await freescout.listConversations(a.mailboxId, a.status || 'active', a.page || 1);
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_get_ticket': {
-          if (!a.conversationId) return err('conversationId is required');
-          const data = await freescout.getConversation(a.conversationId);
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_create_ticket': {
-          if (!a.mailboxId || !a.subject || !a.customerEmail || !a.body) return err('mailboxId, subject, customerEmail, and body are required');
-          const data = await freescout.createConversation({
-            type: 'email',
-            mailboxId: a.mailboxId,
-            subject: a.subject,
-            customer: { email: a.customerEmail, firstName: a.customerFirstName },
-            threads: [{ type: 'customer', body: a.body }],
-            status: a.status,
-          });
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_reply': {
-          if (!a.conversationId || !a.body) return err('conversationId and body are required');
-          const data = await freescout.replyToConversation(a.conversationId, a.body, a.type || 'reply');
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_update_ticket': {
-          if (!a.conversationId) return err('conversationId is required');
-          const data = await freescout.updateConversation(a.conversationId, {
-            status: a.status,
-            assignTo: a.assignTo,
-            subject: a.subject,
-          });
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_list_customers': {
-          const data = await freescout.listCustomers(a.page || 1);
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_search_customers': {
-          if (!a.query) return err('query is required');
-          const data = await freescout.searchCustomers(a.query);
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_list_mailboxes': {
-          const data = await freescout.listMailboxes();
-          return ok(JSON.stringify(data, null, 2));
-        }
-        case 'helpdesk_list_agents': {
-          const data = await freescout.listUsers();
-          return ok(JSON.stringify(data, null, 2));
-        }
-      }
-    }
-
     return err(`Unknown tool: ${name}`);
   } catch (error: any) {
     logger.error(`Tool ${name} failed: ${error?.message || error}`, 'CallTool');
@@ -1174,14 +1014,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 async function main() {
-  logger.info('Starting Garza MCP Server v5 (Mail + Drive + iCloud + Beeper + BeeperDB + FabricAI + FreeScout)...', 'Main');
+  logger.info('Starting Garza MCP Server v5 (Mail + Drive + iCloud + Beeper + FabricAI)...', 'Main');
   logger.info(`Mail user: ${PROTONMAIL_USERNAME}`, 'Main');
   logger.info(`Proton Drive: ${PROTON_DRIVE_PATH}`, 'Main');
   logger.info(`iCloud Drive: ${ICLOUD_DRIVE_PATH}`, 'Main');
   logger.info(`Beeper API: ${BEEPER_API_URL}`, 'Main');
   logger.info(`Beeper DB: ${BEEPER_DB_PATH}`, 'Main');
   if (fabric) logger.info(`Fabric AI: ${FABRIC_API_URL}`, 'Main');
-  if (freescout) logger.info(`FreeScout: ${FREESCOUT_URL}`, 'Main');
+
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
