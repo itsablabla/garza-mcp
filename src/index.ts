@@ -22,6 +22,8 @@ import { DriveService } from './services/drive-service.js';
 import { BeeperService } from './services/beeper-service.js';
 import { BeeperDbService } from './services/beeper-db-service.js';
 import { FabricService } from './services/fabric-service.js';
+import { QuoService } from './services/quo-service.js';
+import { VoicenotesService } from './services/voicenotes-service.js';
 import { logger } from './utils/logger.js';
 import { parseEmails } from './utils/helpers.js';
 
@@ -39,6 +41,8 @@ const BEEPER_TOKEN = process.env.BEEPER_TOKEN || '';
 const BEEPER_DB_PATH = process.env.BEEPER_DB_PATH || '/Users/customer/Library/Application Support/BeeperTexts/index.db';
 const FABRIC_API_KEY = process.env.FABRIC_API_KEY || '';
 const FABRIC_API_URL = process.env.FABRIC_API_URL || 'https://api.fabric.so';
+const QUO_API_KEY = process.env.QUO_API_KEY || '';
+const VOICENOTES_TOKEN = process.env.VOICENOTES_TOKEN || '';
 
 const DEBUG = process.env.DEBUG === 'true';
 
@@ -77,7 +81,8 @@ const icloud = new DriveService(ICLOUD_DRIVE_PATH, 'iCloud');
 const beeper = new BeeperService(BEEPER_API_URL, BEEPER_TOKEN);
 const beeperDb = new BeeperDbService(BEEPER_DB_PATH);
 const fabric = FABRIC_API_KEY ? new FabricService(FABRIC_API_KEY, FABRIC_API_URL) : null;
-
+const quo = QUO_API_KEY ? new QuoService(QUO_API_KEY) : null;
+const voicenotes = VOICENOTES_TOKEN ? new VoicenotesService(VOICENOTES_TOKEN) : null;
 
 // ── MCP Server ───────────────────────────────────────────────────────────────
 const server = new Server(
@@ -639,6 +644,241 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     ] : []),
 
+    // ═══════════════════════════ QUO (PHONE / SMS / CALLS) ═════════════════
+    ...(quo ? [
+      {
+        name: "quo_list_numbers",
+        description: "List all phone numbers in the Quo (OpenPhone) workspace",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
+      {
+        name: "quo_send_message",
+        description: "Send an SMS/text message from a Quo phone number",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            from: { type: "string", description: "Quo phone number ID to send from" },
+            to: { type: "string", description: "Recipient phone number (E.164 format, e.g. +12125551234)" },
+            content: { type: "string", description: "Message text" },
+          },
+          required: ["from", "to", "content"],
+        },
+      },
+      {
+        name: "quo_list_messages",
+        description: "List text messages between a Quo number and participant(s)",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            phoneNumberId: { type: "string", description: "Quo phone number ID" },
+            participants: { type: "array", items: { type: "string" }, description: "Participant phone numbers (E.164)" },
+            maxResults: { type: "number", description: "Max messages to return" },
+          },
+          required: ["phoneNumberId", "participants"],
+        },
+      },
+      {
+        name: "quo_get_message",
+        description: "Get a specific text message by ID",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            messageId: { type: "string", description: "Message ID" },
+          },
+          required: ["messageId"],
+        },
+      },
+      {
+        name: "quo_list_calls",
+        description: "List calls between a Quo number and participant(s)",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            phoneNumberId: { type: "string", description: "Quo phone number ID" },
+            participants: { type: "array", items: { type: "string" }, description: "Participant phone numbers (E.164)" },
+            maxResults: { type: "number", description: "Max calls to return" },
+          },
+          required: ["phoneNumberId", "participants"],
+        },
+      },
+      {
+        name: "quo_get_call",
+        description: "Get details of a specific call by ID",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            callId: { type: "string", description: "Call ID" },
+          },
+          required: ["callId"],
+        },
+      },
+      {
+        name: "quo_call_summary",
+        description: "Get AI-generated summary of a call",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            callId: { type: "string", description: "Call ID" },
+          },
+          required: ["callId"],
+        },
+      },
+      {
+        name: "quo_call_transcript",
+        description: "Get the full transcript of a call",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            callId: { type: "string", description: "Call ID" },
+          },
+          required: ["callId"],
+        },
+      },
+      {
+        name: "quo_voicemail",
+        description: "Get voicemail for a specific call",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            callId: { type: "string", description: "Call ID" },
+          },
+          required: ["callId"],
+        },
+      },
+      {
+        name: "quo_call_recordings",
+        description: "Get recordings for a specific call",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            callId: { type: "string", description: "Call ID" },
+          },
+          required: ["callId"],
+        },
+      },
+      {
+        name: "quo_list_contacts",
+        description: "List contacts in the Quo workspace",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            page: { type: "number", description: "Page number" },
+          },
+        },
+      },
+      {
+        name: "quo_get_contact",
+        description: "Get a specific contact by ID",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            contactId: { type: "string", description: "Contact ID" },
+          },
+          required: ["contactId"],
+        },
+      },
+      {
+        name: "quo_create_contact",
+        description: "Create a new contact in Quo",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            firstName: { type: "string", description: "First name" },
+            lastName: { type: "string", description: "Last name" },
+            company: { type: "string", description: "Company name" },
+            role: { type: "string", description: "Role/title" },
+            phone: { type: "string", description: "Phone number (E.164)" },
+            email: { type: "string", description: "Email address" },
+          },
+          required: ["firstName"],
+        },
+      },
+      {
+        name: "quo_update_contact",
+        description: "Update an existing contact in Quo",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            contactId: { type: "string", description: "Contact ID" },
+            firstName: { type: "string", description: "First name" },
+            lastName: { type: "string", description: "Last name" },
+            company: { type: "string", description: "Company" },
+            role: { type: "string", description: "Role/title" },
+          },
+          required: ["contactId"],
+        },
+      },
+      {
+        name: "quo_delete_contact",
+        description: "Delete a contact from Quo",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            contactId: { type: "string", description: "Contact ID" },
+          },
+          required: ["contactId"],
+        },
+      },
+      {
+        name: "quo_list_conversations",
+        description: "List conversations (SMS threads) in Quo",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            phoneNumberId: { type: "string", description: "Filter by Quo phone number ID" },
+            maxResults: { type: "number", description: "Max conversations to return" },
+          },
+        },
+      },
+      {
+        name: "quo_list_users",
+        description: "List users in the Quo workspace",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
+    ] : []),
+
+    // ═══════════════════════════ VOICENOTES ═══════════════════════════
+    ...(voicenotes ? [
+      {
+        name: "voicenotes_user",
+        description: "Get Voicenotes user/account information",
+        inputSchema: { type: "object" as const, properties: {} },
+      },
+      {
+        name: "voicenotes_list",
+        description: "List voice note recordings with pagination",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            cursor: { type: "string", description: "Pagination cursor from previous response" },
+            limit: { type: "number", description: "Notes per page (default: 20)" },
+          },
+        },
+      },
+      {
+        name: "voicenotes_search",
+        description: "Search voice notes by keyword across titles, transcripts, tags, and AI creations",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            query: { type: "string", description: "Search keyword" },
+            limit: { type: "number", description: "Max results (default: 20)" },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "voicenotes_audio_url",
+        description: "Get a signed download URL for a voice note's audio file",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            recordingId: { type: "string", description: "Recording ID" },
+          },
+          required: ["recordingId"],
+        },
+      },
+    ] : []),
 
   ],
 }));
@@ -1005,6 +1245,130 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
+    // ─── QUO (PHONE / SMS / CALLS) ─────────────────────────────────────────
+    if (name.startsWith('quo_') && quo) {
+      const a = (args || {}) as Record<string, any>;
+      switch (name) {
+        case 'quo_list_numbers': {
+          const data = await quo.listPhoneNumbers();
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_send_message': {
+          if (!a.from || !a.to || !a.content) return err('from, to, and content are required');
+          const data = await quo.sendMessage(a.from, a.to, a.content);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_list_messages': {
+          if (!a.phoneNumberId || !a.participants) return err('phoneNumberId and participants are required');
+          const data = await quo.listMessages(a.phoneNumberId, a.participants, a.maxResults);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_get_message': {
+          if (!a.messageId) return err('messageId is required');
+          const data = await quo.getMessage(a.messageId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_list_calls': {
+          if (!a.phoneNumberId || !a.participants) return err('phoneNumberId and participants are required');
+          const data = await quo.listCalls(a.phoneNumberId, a.participants, a.maxResults);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_get_call': {
+          if (!a.callId) return err('callId is required');
+          const data = await quo.getCall(a.callId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_call_summary': {
+          if (!a.callId) return err('callId is required');
+          const data = await quo.getCallSummary(a.callId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_call_transcript': {
+          if (!a.callId) return err('callId is required');
+          const data = await quo.getCallTranscript(a.callId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_voicemail': {
+          if (!a.callId) return err('callId is required');
+          const data = await quo.getVoicemail(a.callId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_call_recordings': {
+          if (!a.callId) return err('callId is required');
+          const data = await quo.getCallRecordings(a.callId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_list_contacts': {
+          const data = await quo.listContacts(a.page);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_get_contact': {
+          if (!a.contactId) return err('contactId is required');
+          const data = await quo.getContact(a.contactId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_create_contact': {
+          if (!a.firstName) return err('firstName is required');
+          const fields: any = { firstName: a.firstName };
+          if (a.lastName) fields.lastName = a.lastName;
+          if (a.company) fields.company = a.company;
+          if (a.role) fields.role = a.role;
+          if (a.phone) fields.phoneNumbers = [{ name: 'main', value: a.phone }];
+          if (a.email) fields.emails = [{ name: 'main', value: a.email }];
+          const data = await quo.createContact(fields);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_update_contact': {
+          if (!a.contactId) return err('contactId is required');
+          const fields: any = {};
+          if (a.firstName) fields.firstName = a.firstName;
+          if (a.lastName) fields.lastName = a.lastName;
+          if (a.company) fields.company = a.company;
+          if (a.role) fields.role = a.role;
+          const data = await quo.updateContact(a.contactId, fields);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_delete_contact': {
+          if (!a.contactId) return err('contactId is required');
+          const data = await quo.deleteContact(a.contactId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_list_conversations': {
+          const data = await quo.listConversations(a.phoneNumberId, undefined, undefined, a.maxResults);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'quo_list_users': {
+          const data = await quo.listUsers();
+          return ok(JSON.stringify(data, null, 2));
+        }
+      }
+    }
+
+    // ─── VOICENOTES ──────────────────────────────────────────────────────
+    if (name.startsWith('voicenotes_') && voicenotes) {
+      const a = (args || {}) as Record<string, any>;
+      switch (name) {
+        case 'voicenotes_user': {
+          const data = await voicenotes.getUserInfo();
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'voicenotes_list': {
+          const data = await voicenotes.listRecordings(a.cursor, a.limit || 20);
+          return ok(JSON.stringify(data, null, 2));
+        }
+        case 'voicenotes_search': {
+          if (!a.query) return err('query is required');
+          const results = await voicenotes.searchNotes(a.query, a.limit || 20);
+          return ok(JSON.stringify({ count: results.length, results }, null, 2));
+        }
+        case 'voicenotes_audio_url': {
+          if (!a.recordingId) return err('recordingId is required');
+          const data = await voicenotes.getRecordingAudioUrl(a.recordingId);
+          return ok(JSON.stringify(data, null, 2));
+        }
+      }
+    }
+
     return err(`Unknown tool: ${name}`);
   } catch (error: any) {
     logger.error(`Tool ${name} failed: ${error?.message || error}`, 'CallTool');
@@ -1014,13 +1378,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 async function main() {
-  logger.info('Starting Garza MCP Server v5 (Mail + Drive + iCloud + Beeper + FabricAI)...', 'Main');
+  logger.info('Starting Garza MCP Server v5 (Mail + Drive + iCloud + Beeper + FabricAI + Quo + Voicenotes)...', 'Main');
   logger.info(`Mail user: ${PROTONMAIL_USERNAME}`, 'Main');
   logger.info(`Proton Drive: ${PROTON_DRIVE_PATH}`, 'Main');
   logger.info(`iCloud Drive: ${ICLOUD_DRIVE_PATH}`, 'Main');
   logger.info(`Beeper API: ${BEEPER_API_URL}`, 'Main');
   logger.info(`Beeper DB: ${BEEPER_DB_PATH}`, 'Main');
   if (fabric) logger.info(`Fabric AI: ${FABRIC_API_URL}`, 'Main');
+  if (quo) logger.info('Quo (OpenPhone): connected', 'Main');
+  if (voicenotes) logger.info('Voicenotes: connected', 'Main');
 
 
   const transport = new StdioServerTransport();
