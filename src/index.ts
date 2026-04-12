@@ -846,12 +846,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
       {
         name: "voicenotes_list",
-        description: "List voice note recordings with pagination",
+        description: "List voice note recordings (syncs from Voicenotes.com). Returns recordings with transcripts, tags, and AI creations.",
         inputSchema: {
           type: "object" as const,
           properties: {
-            cursor: { type: "string", description: "Pagination cursor from previous response" },
-            limit: { type: "number", description: "Notes per page (default: 20)" },
+            since: { type: "string", description: "ISO timestamp — only return notes updated after this date (optional)" },
           },
         },
       },
@@ -1353,7 +1352,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return ok(JSON.stringify(data, null, 2));
         }
         case 'voicenotes_list': {
-          const data = await voicenotes.listRecordings(a.cursor, a.limit || 20);
+          const data = await voicenotes.listRecordings(a.since || null);
           return ok(JSON.stringify(data, null, 2));
         }
         case 'voicenotes_search': {
