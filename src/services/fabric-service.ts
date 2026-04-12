@@ -3,6 +3,8 @@
  *
  * Integrates with the Fabric AI API (api.fabric.so) to provide
  * memory storage, notepad management, and semantic search.
+ *
+ * API docs: https://developers.fabric.so
  */
 
 import { logger } from '../utils/logger.js';
@@ -49,7 +51,10 @@ export class FabricService {
   // ── Search ──────────────────────────────────────────────────────────────
 
   async search(query: string, limit: number = 10): Promise<unknown> {
-    return this.request('POST', '/v2/search', { query, limit });
+    return this.request('POST', '/v2/search', {
+      queries: [{ mode: 'hybrid', text: query }],
+      pagination: { page: 1, pageSize: limit },
+    });
   }
 
   // ── Memories ────────────────────────────────────────────────────────────
@@ -58,22 +63,32 @@ export class FabricService {
     return this.request('POST', '/v2/memories', { source, content });
   }
 
-  async listMemories(limit: number = 20): Promise<unknown> {
-    return this.request('GET', `/v2/memories?limit=${limit}`);
-  }
-
-  // ── Notepads ────────────────────────────────────────────────────────────
-
-  async createNotepad(text: string, parentId?: string): Promise<unknown> {
-    return this.request('POST', '/v2/notepads', {
-      parentId: parentId || this.parentId,
-      text,
+  async recallMemories(query: string, limit: number = 20): Promise<unknown> {
+    // Memories are recalled via semantic search
+    return this.request('POST', '/v2/search', {
+      queries: [{ mode: 'hybrid', text: query }],
+      pagination: { page: 1, pageSize: limit },
     });
   }
 
-  async listNotepads(parentId?: string): Promise<unknown> {
+  // ── Notepads (via resources/filter) ────────────────────────────────────
+
+  async createNotepad(text: string, name?: string, parentId?: string): Promise<unknown> {
+    const body: Record<string, unknown> = {
+      parentId: parentId || this.parentId,
+      text,
+    };
+    if (name) body.name = name;
+    return this.request('POST', '/v2/notepads', body);
+  }
+
+  async listNotepads(parentId?: string, limit: number = 20): Promise<unknown> {
     const pid = parentId || this.parentId;
-    return this.request('GET', `/v2/notepads?parentId=${pid}`);
+    return this.request('POST', '/v2/resources/filter', {
+      parentId: pid,
+      limit,
+      order: { property: 'modifiedAt', direction: 'DESC' },
+    });
   }
 
   async getNotepad(notepadId: string): Promise<unknown> {

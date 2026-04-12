@@ -572,13 +572,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
       {
-        name: "fabric_list_memories",
-        description: "List recent memories stored in Fabric AI",
+        name: "fabric_recall_memories",
+        description: "Recall memories from Fabric AI by semantic search query",
         inputSchema: {
           type: "object" as const,
           properties: {
+            query: { type: "string", description: "Search query to recall relevant memories" },
             limit: { type: "number", description: "Max results (default: 20)" },
           },
+          required: ["query"],
         },
       },
       {
@@ -1073,8 +1075,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const data = await fabric.addMemory(a.content);
           return ok(JSON.stringify(data, null, 2));
         }
-        case 'fabric_list_memories': {
-          const data = await fabric.listMemories(a.limit || 20);
+        case 'fabric_recall_memories': {
+          const data = await fabric.recallMemories(a.query, a.limit || 20);
           return ok(JSON.stringify(data, null, 2));
         }
         case 'fabric_create_note': {
