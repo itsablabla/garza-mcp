@@ -1,10 +1,10 @@
 # Garza MCP
 
-Unified MCP (Model Context Protocol) server combining **ProtonMail**, **Proton Drive**, **iCloud Drive**, **Beeper API**, and **Beeper Database** into a single service with 51 tools.
+Unified MCP (Model Context Protocol) server combining **ProtonMail**, **Proton Drive**, **iCloud Drive**, **Beeper API**, **Beeper Database**, **Fabric AI**, and **FreeScout Helpdesk** into a single service with 68 tools across 7 services.
 
 Deployed at: `https://mcp.garzaos.cloud/mcp`
 
-## Tools (51)
+## Tools (68)
 
 ### ProtonMail (11)
 | Tool | Description |
@@ -79,24 +79,55 @@ Direct SQLite queries on the local BeeperTexts database (17GB, 8.3M+ messages).
 | `beeper_db_reactions` | Get emoji reactions for a message |
 | `beeper_db_analytics` | Messaging analytics with top chats |
 
+### Fabric AI (8)
+Memory, notes, and semantic search via the Fabric AI API. Optional — requires `FABRIC_API_KEY`.
+
+| Tool | Description |
+|---|---|
+| `fabric_search` | Semantic search across knowledge base |
+| `fabric_add_memory` | Add a new memory/fact for future retrieval |
+| `fabric_list_memories` | List recent stored memories |
+| `fabric_create_note` | Create a new notepad/document |
+| `fabric_list_notes` | List notepads in a folder |
+| `fabric_get_note` | Get a specific notepad by ID |
+| `fabric_update_note` | Update an existing notepad |
+| `fabric_delete_note` | Delete a notepad |
+
+### FreeScout Helpdesk (9)
+Helpdesk ticket management via FreeScout API. Optional — requires `FREESCOUT_URL` and `FREESCOUT_API_KEY`.
+
+| Tool | Description |
+|---|---|
+| `helpdesk_list_tickets` | List tickets with status filter |
+| `helpdesk_get_ticket` | Get full ticket details with threads |
+| `helpdesk_create_ticket` | Create a new support ticket |
+| `helpdesk_reply` | Reply to or add note on a ticket |
+| `helpdesk_update_ticket` | Update ticket status/assignment |
+| `helpdesk_list_customers` | List helpdesk customers |
+| `helpdesk_search_customers` | Search customers by name/email |
+| `helpdesk_list_mailboxes` | List all mailboxes/departments |
+| `helpdesk_list_agents` | List all helpdesk agents |
+
 ## Architecture
 
 ```
-Client → https://mcp.garzaos.cloud/mcp
-         ↓ (Bearer token auth)
+Client -> https://mcp.garzaos.cloud/mcp
+         | (Bearer token auth)
        Caddy (SSL termination, ports 80/443)
-         ↓
+         |
        Auth Proxy (port 3105)
-         ↓
+         |
        mcp-proxy (port 3104, Streamable HTTP)
-         ↓
+         |
        Node.js MCP Server (this code)
-         ├── SMTP → Proton Bridge (:1025)
-         ├── IMAP → Proton Bridge (:1143)
-         ├── Proton Drive → local sync folder
-         ├── iCloud Drive → local sync folder
-         ├── Beeper API → localhost:23373
-         └── Beeper DB → SQLite (index.db)
+         |-- SMTP -> Proton Bridge (:1025)
+         |-- IMAP -> Proton Bridge (:1143)
+         |-- Proton Drive -> local sync folder
+         |-- iCloud Drive -> local sync folder
+         |-- Beeper API -> localhost:23373
+         |-- Beeper DB -> SQLite (index.db)
+         |-- Fabric AI -> api.fabric.so (HTTPS)
+         |-- FreeScout -> support.nomad-os.cloud (HTTPS)
 ```
 
 ## Setup
@@ -112,6 +143,7 @@ Client → https://mcp.garzaos.cloud/mcp
 
 ### Environment Variables
 ```bash
+# Required
 PROTONMAIL_USERNAME=your@pm.me
 PROTONMAIL_PASSWORD=bridge-password
 PROTONMAIL_SMTP_HOST=127.0.0.1
@@ -123,6 +155,14 @@ ICLOUD_DRIVE_PATH=/path/to/iCloud-Drive/
 BEEPER_API_URL=http://localhost:23373
 BEEPER_TOKEN=your-beeper-token
 BEEPER_DB_PATH=/path/to/BeeperTexts/index.db
+
+# Optional — Fabric AI
+FABRIC_API_KEY=your-fabric-api-key
+FABRIC_API_URL=https://api.fabric.so
+
+# Optional — FreeScout Helpdesk
+FREESCOUT_URL=https://support.example.com
+FREESCOUT_API_KEY=your-freescout-api-key
 ```
 
 ### Build & Run
@@ -137,9 +177,23 @@ npm start
 mcp-proxy --port 3104 --host 127.0.0.1 --transport streamablehttp \
   -e PROTONMAIL_USERNAME your@pm.me \
   -e PROTONMAIL_PASSWORD bridge-password \
+  -e FABRIC_API_KEY your-fabric-key \
+  -e FREESCOUT_URL https://support.example.com \
+  -e FREESCOUT_API_KEY your-freescout-key \
   # ... other env vars ...
   -- node dist/index.js
 ```
+
+## CI/CD
+
+GitHub Actions workflows are included:
+- **CI** (`.github/workflows/ci.yml`): Runs build + typecheck on Node 18/20/22 for every push and PR
+- **Deploy** (`.github/workflows/deploy.yml`): Auto-deploys to the Mac Mini on push to `main`
+
+### Required GitHub Secrets for Deploy
+- `MAC_MINI_HOST` — Server IP address
+- `MAC_MINI_USER` — SSH username
+- `MAC_MINI_PASSWORD` — SSH password
 
 ## MCP Client Config
 ```json

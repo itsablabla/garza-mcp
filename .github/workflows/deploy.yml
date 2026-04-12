@@ -1,0 +1,69 @@
+name: Deploy to Mac Mini
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package dist
+        run: tar czf /tmp/garza-mcp-dist.tar.gz dist/ package.json package-lock.json
+
+      - name: Deploy to Mac Mini
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.MAC_MINI_HOST }}
+          username: ${{ secrets.MAC_MINI_USER }}
+          password: ${{ secrets.MAC_MINI_PASSWORD }}
+          source: "dist/,package.json,package-lock.json"
+          target: "/Users/customer/projects/proton-unified-mcp/"
+          overwrite: true
+
+      - name: Restart MCP Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.MAC_MINI_HOST }}
+          username: ${{ secrets.MAC_MINI_USER }}
+          password: ${{ secrets.MAC_MINI_PASSWORD }}
+          script: |
+            cd /Users/customer/projects/proton-unified-mcp
+            npm install --production
+            # Kill existing mcp-proxy on port 3104 and restart
+            pkill -f "mcp-proxy.*3104" 2>/dev/null || true
+            pkill -f "node.*proton-unified-mcp/dist/index.js" 2>/dev/null || true
+            sleep 2
+            nohup /Users/customer/.local/bin/mcp-proxy \
+              --port 3104 --host 127.0.0.1 \
+              --transport streamablehttp --allow-origin "*" \
+              -e PROTONMAIL_USERNAME jadengarza@pm.me \
+              -e PROTONMAIL_PASSWORD "$PROTONMAIL_PASSWORD" \
+              -e PROTONMAIL_SMTP_HOST 127.0.0.1 \
+              -e PROTONMAIL_SMTP_PORT 1025 \
+              -e PROTONMAIL_IMAP_HOST 127.0.0.1 \
+              -e PROTONMAIL_IMAP_PORT 1143 \
+              -e PROTON_DRIVE_PATH "/Users/customer/Library/CloudStorage/ProtonDrive-jadengarza@pm.me-folder/" \
+              -e ICLOUD_DRIVE_PATH "/Users/customer/Library/Mobile Documents/com~apple~CloudDocs/" \
+              -e BEEPER_API_URL http://localhost:23373 \
+              -e BEEPER_TOKEN "$BEEPER_TOKEN" \
+              -e BEEPER_DB_PATH "/Users/customer/Library/Application Support/BeeperTexts/index.db" \
+              -e DEBUG false \
+              -- /Users/customer/node/bin/node /Users/customer/projects/proton-unified-mcp/dist/index.js \
+              > /tmp/mcp-unified.log 2>&1 &
+            sleep 3
+            # Verify server is running
+            lsof -i :3104 -sTCP:LISTEN | head -3

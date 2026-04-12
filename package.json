@@ -1,7 +1,7 @@
 {
-  "name": "proton-unified-mcp",
-  "version": "1.0.0",
-  "description": "Unified Proton MCP server — Mail (SMTP/IMAP) + Drive (filesystem) over Streamable HTTP",
+  "name": "garza-mcp",
+  "version": "5.0.0",
+  "description": "Garza MCP — Unified MCP server: ProtonMail, Proton Drive, iCloud Drive, Beeper, Fabric AI, FreeScout",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
