@@ -1,0 +1,29 @@
+{
+  "name": "proton-unified-mcp",
+  "version": "1.0.0",
+  "description": "Unified Proton MCP server — Mail (SMTP/IMAP) + Drive (filesystem) over Streamable HTTP",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "imapflow": "^1.0.164",
+    "mailparser": "^3.7.1",
+    "nodemailer": "^6.9.15",
+    "mime-types": "^2.1.35"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.19",
+    "@types/mime-types": "^2.1.4",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
