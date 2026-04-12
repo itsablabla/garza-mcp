@@ -724,8 +724,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "mail_status": {
         const smtpOk = await smtp.verifyConnection().catch(() => false);
-        const imapOk = imap.isConnected();
-        return ok(`SMTP: ${smtpOk ? 'connected' : 'not connected'} | IMAP: ${imapOk ? 'connected' : 'not connected'} | User: ${PROTONMAIL_USERNAME}`);
+        let imapStatus = 'not connected';
+        if (imap.isConnected()) {
+          imapStatus = 'connected';
+        } else {
+          // Try to connect — gives a real health check
+          try {
+            await imap.connect();
+            imapStatus = 'connected (just reconnected)';
+          } catch (e: any) {
+            imapStatus = `error: ${e.message?.slice(0, 120) || 'unknown'}`;
+          }
+        }
+        return ok(`SMTP: ${smtpOk ? 'connected' : 'not connected'} | IMAP: ${imapStatus} | User: ${PROTONMAIL_USERNAME}`);
       }
     }
 
@@ -881,3 +892,12 @@ main().catch((error) => {
   console.error('[FATAL]', error);
   process.exit(1);
 });
+
+// Graceful shutdown — close IMAP connection cleanly
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, async () => {
+    logger.info(`Received ${sig}, shutting down...`, 'Main');
+    await imap.disconnect().catch(() => {});
+    process.exit(0);
+  });
+}

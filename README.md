@@ -2,6 +2,11 @@
 
 Unified MCP (Model Context Protocol) server combining **ProtonMail**, **Proton Drive**, **iCloud Drive**, **Beeper API**, and **Beeper Database** into a single service with 51 tools.
 
+> **ProtonMail IMAP Note:** The server is tuned for a 736 GB mailbox behind Proton Bridge.
+> IMAP operations use 60-90 s timeouts, server-side SEARCH (instead of client-side
+> filtering), and automatic reconnection with retries to avoid timeouts during
+> Proton Bridge sync.
+
 Deployed at: `https://mcp.garzaos.cloud/mcp`
 
 ## Tools (51)
@@ -21,7 +26,7 @@ Deployed at: `https://mcp.garzaos.cloud/mcp`
 | `mail_move` | Move email to another folder |
 | `mail_delete` | Delete an email |
 
-### Proton Drive (9)
+### Proton Drive (9) — list, read, write, mkdir, delete, move, info, search, stats
 | Tool | Description |
 |---|---|
 | `drive_list` | List files/folders in Proton Drive |
@@ -34,7 +39,7 @@ Deployed at: `https://mcp.garzaos.cloud/mcp`
 | `drive_search` | Search files by name |
 | `drive_stats` | Get drive usage statistics |
 
-### iCloud Drive (9)
+### iCloud Drive (9) — list, read, write, mkdir, delete, move, info, search, stats
 | Tool | Description |
 |---|---|
 | `icloud_list` | List files/folders in iCloud Drive |
