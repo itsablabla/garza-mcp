@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shlex
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,8 @@ class DriveService:
     async def search_files(self, query: str, path: str = "/") -> list[dict[str, Any]]:
         """Search for files using find with maxdepth to avoid timeouts."""
         target = self._resolve(path)
-        output = await self._run(f'find "{target}" -maxdepth 3 -iname "*{query}*" 2>/dev/null | head -100', timeout=30)
+        safe_query = shlex.quote(f"*{query}*")
+        output = await self._run(f'find "{target}" -maxdepth 3 -iname {safe_query} 2>/dev/null | head -100', timeout=30)
         results: list[dict[str, Any]] = []
         for line in output.splitlines():
             line = line.strip()

@@ -76,7 +76,8 @@ class BeeperDbService:
         """FTS5 full-text search across messages."""
         where = ""
         if chat_id:
-            where = f"AND m.chat_guid = '{chat_id}'"
+            safe_id = chat_id.replace("'", "''")
+            where = f"AND m.chat_guid = '{safe_id}'"
         sql = f"""
             SELECT m.ROWID as id, m.chat_guid, m.sender, m.text,
                    datetime(m.timestamp/1000, 'unixepoch') as date
@@ -93,7 +94,7 @@ class BeeperDbService:
         """Get message history for a chat thread."""
         where_before = ""
         if before:
-            where_before = f"AND m.timestamp < {before}"
+            where_before = f"AND m.timestamp < {int(before)}"
         sql = f"""
             SELECT m.ROWID as id, m.sender, m.text,
                    datetime(m.timestamp/1000, 'unixepoch') as date
@@ -109,7 +110,8 @@ class BeeperDbService:
         """List chat threads (avoids expensive subqueries)."""
         where = ""
         if account_id:
-            where = f"WHERE chat_guid LIKE '{account_id}%'"
+            safe_id = account_id.replace("'", "''")
+            where = f"WHERE chat_guid LIKE '{safe_id}%'"
         sql = f"""
             SELECT chat_guid, COUNT(*) as message_count,
                    MAX(datetime(timestamp/1000, 'unixepoch')) as last_message

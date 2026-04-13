@@ -249,7 +249,7 @@ class ImapService:
             await self._select_folder(folder)
 
             # Get message count from EXISTS response
-            lines = await self._send("SEARCH ALL", timeout=HEAVY_TIMEOUT)
+            lines = await self._send("UID SEARCH ALL", timeout=HEAVY_TIMEOUT)
             uids: list[str] = []
             for line in lines:
                 if line.startswith("* SEARCH"):
@@ -355,12 +355,12 @@ class ImapService:
             safe_query = query.replace('"', '\\"')
             try:
                 lines = await self._send(
-                    f'SEARCH OR SUBJECT "{safe_query}" FROM "{safe_query}"',
+                    f'UID SEARCH OR SUBJECT "{safe_query}" FROM "{safe_query}"',
                     timeout=SEARCH_TIMEOUT,
                 )
             except RuntimeError:
                 # Fallback to subject-only
-                lines = await self._send(f'SEARCH SUBJECT "{safe_query}"', timeout=SEARCH_TIMEOUT)
+                lines = await self._send(f'UID SEARCH SUBJECT "{safe_query}"', timeout=SEARCH_TIMEOUT)
 
             uids: list[str] = []
             for line in lines:

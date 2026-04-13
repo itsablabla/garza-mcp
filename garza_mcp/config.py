@@ -10,7 +10,7 @@ load_dotenv()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
-AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "garza-proton-unified-mcp-2026-Qm8kR4xN7vL2pW9tJ3yB")
+AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "")
 
 # ── ProtonMail (IMAP/SMTP via Proton Bridge) ─────────────────────────────────
 PROTONMAIL_USERNAME = os.getenv("PROTONMAIL_USERNAME", "jadengarza@pm.me")
@@ -35,21 +35,21 @@ BEEPER_DB_PATH = os.getenv("BEEPER_DB_PATH", "/Users/customer/Library/Applicatio
 
 # ── Fabric AI ─────────────────────────────────────────────────────────────────
 FABRIC_API_URL = os.getenv("FABRIC_API_URL", "https://api.fabric.so")
-FABRIC_API_KEY = os.getenv("FABRIC_API_KEY", "e85e93ef-3c60-4862-9c73-50fbde4cf5f4")
+FABRIC_API_KEY = os.getenv("FABRIC_API_KEY", "")
 FABRIC_DEFAULT_PARENT = os.getenv("FABRIC_DEFAULT_PARENT", "89cd201a-0be0-47f2-a25e-bdc1f85c1ef8")
 
 # ── Quo / OpenPhone ──────────────────────────────────────────────────────────
-QUO_API_KEY = os.getenv("QUO_API_KEY", "3Sv29ZnTAvJAG0Y5QX2iABXrkkaLsQjj")
+QUO_API_KEY = os.getenv("QUO_API_KEY", "")
 QUO_API_URL = os.getenv("QUO_API_URL", "https://api.openphone.com/v1")
 
 # ── Voicenotes ────────────────────────────────────────────────────────────────
-VOICENOTES_TOKEN = os.getenv("VOICENOTES_TOKEN", "c7b40d81733ef9794b21c30aa286f026c807e1f6c325ff00a53a15a809440674")
+VOICENOTES_TOKEN = os.getenv("VOICENOTES_TOKEN", "")
 VOICENOTES_API_URL = os.getenv("VOICENOTES_API_URL", "https://api.voicenotes.com")
 
 # ── Nextcloud ─────────────────────────────────────────────────────────────────
 NEXTCLOUD_URL = os.getenv("NEXTCLOUD_URL", "https://next.garzaos.online")
 NEXTCLOUD_USERNAME = os.getenv("NEXTCLOUD_USERNAME", "admin")
-NEXTCLOUD_PASSWORD = os.getenv("NEXTCLOUD_PASSWORD", "8f326a45e5d013978a931bc4c57af0a2d1de3272fcb2afa5")
+NEXTCLOUD_PASSWORD = os.getenv("NEXTCLOUD_PASSWORD", "")
 
 # ── Server ────────────────────────────────────────────────────────────────────
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
