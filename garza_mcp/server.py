@@ -412,75 +412,95 @@ async def icloud_stats() -> str:
 # BEEPER API TOOLS (14)
 # ══════════════════════════════════════════════════════════════════════════════
 
+_BEEPER_OFFLINE = _json({"error": "Beeper Desktop is not running on the server", "hint": "Start Beeper Desktop on the Mac Mini (requires GUI login)"})
+
+async def _beeper_call(coro: Any) -> str:
+    """Wrap Beeper API calls with health check for offline Desktop app."""
+    try:
+        return _json(await coro)
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
+        return _BEEPER_OFFLINE
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return _BEEPER_OFFLINE
+        raise
+
 @mcp.tool()
 async def beeper_list_accounts() -> str:
     """List Beeper messaging accounts."""
-    return _json(await beeper_api.list_accounts())
+    return await _beeper_call(beeper_api.list_accounts())
 
 @mcp.tool()
 async def beeper_list_chats(limit: int | None = None, offset: int | None = None, unreadOnly: bool = False, service: str | None = None) -> str:
     """List Beeper chats."""
-    return _json(await beeper_api.list_chats(limit=limit, offset=offset, unread_only=unreadOnly, service=service))
+    return await _beeper_call(beeper_api.list_chats(limit=limit, offset=offset, unread_only=unreadOnly, service=service))
 
 @mcp.tool()
 async def beeper_search_chats(query: str) -> str:
     """Search Beeper chats."""
-    return _json(await beeper_api.search_chats(query))
+    return await _beeper_call(beeper_api.search_chats(query))
 
 @mcp.tool()
 async def beeper_get_chat(chatID: str) -> str:
     """Get a specific Beeper chat."""
-    return _json(await beeper_api.get_chat(chatID))
+    return await _beeper_call(beeper_api.get_chat(chatID))
 
 @mcp.tool()
 async def beeper_get_messages(chatID: str, limit: int | None = None, before: str | None = None) -> str:
     """Get messages from a Beeper chat."""
-    return _json(await beeper_api.get_messages(chatID, limit=limit, before=before))
+    return await _beeper_call(beeper_api.get_messages(chatID, limit=limit, before=before))
 
 @mcp.tool()
 async def beeper_search_messages(query: str, limit: int | None = None) -> str:
     """Search Beeper messages."""
-    return _json(await beeper_api.search_messages(query, limit=limit))
+    return await _beeper_call(beeper_api.search_messages(query, limit=limit))
 
 @mcp.tool()
 async def beeper_send_message(chatID: str, text: str, replyTo: str | None = None) -> str:
     """Send a Beeper message."""
-    return _json(await beeper_api.send_message(chatID, text, reply_to=replyTo))
+    return await _beeper_call(beeper_api.send_message(chatID, text, reply_to=replyTo))
 
 @mcp.tool()
 async def beeper_mark_read(chatID: str, upToMessageID: str | None = None) -> str:
     """Mark a Beeper chat as read."""
-    return _json(await beeper_api.mark_read(chatID, up_to_message_id=upToMessageID))
+    return await _beeper_call(beeper_api.mark_read(chatID, up_to_message_id=upToMessageID))
 
 @mcp.tool()
 async def beeper_add_reaction(chatID: str, messageID: str, emoji: str) -> str:
     """Add a reaction to a Beeper message."""
-    return _json(await beeper_api.add_reaction(chatID, messageID, emoji))
+    return await _beeper_call(beeper_api.add_reaction(chatID, messageID, emoji))
 
 @mcp.tool()
 async def beeper_create_chat(accountID: str, participantIDs: list[str], type: str = "single") -> str:
     """Create a new Beeper chat."""
-    return _json(await beeper_api.create_chat(accountID, participantIDs, chat_type=type))
+    return await _beeper_call(beeper_api.create_chat(accountID, participantIDs, chat_type=type))
 
 @mcp.tool()
 async def beeper_archive_chat(chatID: str, archived: bool) -> str:
     """Archive or unarchive a Beeper chat."""
-    return _json(await beeper_api.archive_chat(chatID, archived))
+    return await _beeper_call(beeper_api.archive_chat(chatID, archived))
 
 @mcp.tool()
 async def beeper_search_contacts(accountID: str, query: str) -> str:
     """Search Beeper contacts."""
-    return _json(await beeper_api.search_contacts(accountID, query))
+    return await _beeper_call(beeper_api.search_contacts(accountID, query))
 
 @mcp.tool()
 async def beeper_set_reminder(chatID: str, remindAt: str) -> str:
     """Set a reminder for a Beeper chat."""
-    return _json(await beeper_api.set_reminder(chatID, remindAt))
+    return await _beeper_call(beeper_api.set_reminder(chatID, remindAt))
 
 @mcp.tool()
 async def beeper_get_unread_summary() -> str:
     """Get unread message summary across all Beeper networks."""
-    summary = await beeper_api.get_unread_summary()
+    try:
+        summary = await beeper_api.get_unread_summary()
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
+        return _BEEPER_OFFLINE
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return _BEEPER_OFFLINE
+        raise
     if not summary["chats"]:
         return _ok("No unread messages across any network.")
     lines = []
@@ -701,18 +721,18 @@ async def quo_create_contact(firstName: str, lastName: str | None = None, compan
     """Create a contact."""
     if not quo:
         return _err("Quo not configured")
-    fields: dict[str, Any] = {"firstName": firstName}
+    default_fields: dict[str, Any] = {"firstName": firstName}
     if lastName:
-        fields["lastName"] = lastName
+        default_fields["lastName"] = lastName
     if company:
-        fields["company"] = company
+        default_fields["company"] = company
     if role:
-        fields["role"] = role
+        default_fields["role"] = role
     if phone:
-        fields["phoneNumbers"] = [{"name": "main", "value": phone}]
+        default_fields["phoneNumbers"] = [{"name": "main", "value": phone}]
     if email:
-        fields["emails"] = [{"name": "main", "value": email}]
-    return _json(await quo.create_contact(fields))
+        default_fields["emails"] = [{"name": "main", "value": email}]
+    return _json(await quo.create_contact({"defaultFields": default_fields}))
 
 @mcp.tool()
 async def quo_update_contact(contactId: str, firstName: str | None = None, lastName: str | None = None, company: str | None = None, role: str | None = None) -> str:
@@ -972,75 +992,81 @@ async def nc_trash_empty() -> str:
 
 # ── Deck (13) ─────────────────────────────────────────────────────────────────
 
+_DECK_NOT_INSTALLED = _json({"error": "Deck app not installed on this Nextcloud instance", "hint": "Install via: occ app:install deck"})
+
+async def _deck_call(coro: Any) -> str:
+    """Wrap Deck API calls with graceful 404 handling for missing app."""
+    try:
+        return _json(await coro)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return _DECK_NOT_INSTALLED
+        raise
+
 @mcp.tool()
 async def nc_deck_list_boards() -> str:
     """List Nextcloud Deck boards."""
-    try:
-        return _json(await _nc().deck_list_boards())
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            return _json({"error": "Deck app not installed on this Nextcloud instance"})
-        raise
+    return await _deck_call(_nc().deck_list_boards())
 
 @mcp.tool()
 async def nc_deck_get_board(boardId: int) -> str:
     """Get a Nextcloud Deck board."""
-    return _json(await _nc().deck_get_board(boardId))
+    return await _deck_call(_nc().deck_get_board(boardId))
 
 @mcp.tool()
 async def nc_deck_create_board(title: str, color: str | None = None) -> str:
     """Create a Nextcloud Deck board."""
-    return _json(await _nc().deck_create_board(title, color))
+    return await _deck_call(_nc().deck_create_board(title, color))
 
 @mcp.tool()
 async def nc_deck_delete_board(boardId: int) -> str:
     """Delete a Nextcloud Deck board."""
-    return _json(await _nc().deck_delete_board(boardId))
+    return await _deck_call(_nc().deck_delete_board(boardId))
 
 @mcp.tool()
 async def nc_deck_list_stacks(boardId: int) -> str:
     """List stacks in a Nextcloud Deck board."""
-    return _json(await _nc().deck_list_stacks(boardId))
+    return await _deck_call(_nc().deck_list_stacks(boardId))
 
 @mcp.tool()
 async def nc_deck_create_stack(boardId: int, title: str, order: int | None = None) -> str:
     """Create a stack in a Nextcloud Deck board."""
-    return _json(await _nc().deck_create_stack(boardId, title, order))
+    return await _deck_call(_nc().deck_create_stack(boardId, title, order))
 
 @mcp.tool()
 async def nc_deck_create_card(boardId: int, stackId: int, title: str, description: str | None = None, duedate: str | None = None) -> str:
     """Create a card in a Nextcloud Deck stack."""
-    return _json(await _nc().deck_create_card(boardId, stackId, title, description, duedate))
+    return await _deck_call(_nc().deck_create_card(boardId, stackId, title, description, duedate))
 
 @mcp.tool()
 async def nc_deck_update_card(boardId: int, stackId: int, cardId: int, title: str | None = None, description: str | None = None, duedate: str | None = None) -> str:
     """Update a card in a Nextcloud Deck stack."""
-    return _json(await _nc().deck_update_card(boardId, stackId, cardId, title, description, duedate))
+    return await _deck_call(_nc().deck_update_card(boardId, stackId, cardId, title, description, duedate))
 
 @mcp.tool()
 async def nc_deck_delete_card(boardId: int, stackId: int, cardId: int) -> str:
     """Delete a card from a Nextcloud Deck stack."""
-    return _json(await _nc().deck_delete_card(boardId, stackId, cardId))
+    return await _deck_call(_nc().deck_delete_card(boardId, stackId, cardId))
 
 @mcp.tool()
 async def nc_deck_move_card(boardId: int, stackId: int, cardId: int, targetStackId: int) -> str:
     """Move a card to another stack."""
-    return _json(await _nc().deck_move_card(boardId, stackId, cardId, targetStackId))
+    return await _deck_call(_nc().deck_move_card(boardId, stackId, cardId, targetStackId))
 
 @mcp.tool()
 async def nc_deck_assign_label(boardId: int, stackId: int, cardId: int, labelId: int) -> str:
     """Assign a label to a Deck card."""
-    return _json(await _nc().deck_assign_label(boardId, stackId, cardId, labelId))
+    return await _deck_call(_nc().deck_assign_label(boardId, stackId, cardId, labelId))
 
 @mcp.tool()
 async def nc_deck_assign_user(boardId: int, stackId: int, cardId: int, userId: str) -> str:
     """Assign a user to a Deck card."""
-    return _json(await _nc().deck_assign_user(boardId, stackId, cardId, userId))
+    return await _deck_call(_nc().deck_assign_user(boardId, stackId, cardId, userId))
 
 @mcp.tool()
 async def nc_deck_create_label(boardId: int, title: str, color: str | None = None) -> str:
     """Create a label for a Deck board."""
-    return _json(await _nc().deck_create_label(boardId, title, color))
+    return await _deck_call(_nc().deck_create_label(boardId, title, color))
 
 
 # ── Tables (7) ────────────────────────────────────────────────────────────────

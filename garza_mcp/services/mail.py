@@ -97,7 +97,7 @@ class ImapService:
             ctx.verify_mode = ssl.CERT_NONE
 
             self._reader, self._writer = await asyncio.wait_for(
-                asyncio.open_connection(self.host, self.port, ssl=ctx),
+                asyncio.open_connection(self.host, self.port, ssl=ctx, limit=1024 * 1024),
                 timeout=CONNECT_TIMEOUT,
             )
             # Read greeting
@@ -553,7 +553,8 @@ class SmtpService:
             async with aiosmtplib.SMTP(
                 hostname=self.host,
                 port=self.port,
-                use_tls=True,
+                use_tls=False,
+                start_tls=True,
                 validate_certs=False,
                 timeout=30,
             ) as smtp:
@@ -569,7 +570,8 @@ class SmtpService:
             async with aiosmtplib.SMTP(
                 hostname=self.host,
                 port=self.port,
-                use_tls=True,
+                use_tls=False,
+                start_tls=True,
                 validate_certs=False,
                 timeout=10,
             ) as smtp:

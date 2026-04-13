@@ -198,12 +198,12 @@ class NextcloudService:
     ) -> dict[str, Any]:
         cal = calendar_id or "personal"
         uid = str(uuid.uuid4())
-        desc = f"DESCRIPTION:{escape_xml(description)}\n" if description else ""
-        loc = f"LOCATION:{escape_xml(location)}\n" if location else ""
+        desc = f"DESCRIPTION:{description}\r\n" if description else ""
+        loc = f"LOCATION:{location}\r\n" if location else ""
         ical = (
-            "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//GarzaMCP//EN\n"
-            f"BEGIN:VEVENT\nUID:{uid}\nDTSTART:{start}\nDTEND:{end}\n"
-            f"SUMMARY:{escape_xml(summary)}\n{desc}{loc}END:VEVENT\nEND:VCALENDAR"
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//GarzaMCP//EN\r\n"
+            f"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{start}\r\nDTEND:{end}\r\n"
+            f"SUMMARY:{summary}\r\n{desc}{loc}END:VEVENT\r\nEND:VCALENDAR"
         )
         resp = await self._client.put(
             f"/remote.php/dav/calendars/{self.username}/{cal}/{uid}.ics",
@@ -295,10 +295,10 @@ class NextcloudService:
             "PRODID:-//GarzaMCP//EN",
             "BEGIN:VTODO",
             f"UID:{uid}",
-            f"SUMMARY:{escape_xml(summary)}",
+            f"SUMMARY:{summary}",
         ]
         if description:
-            lines.append(f"DESCRIPTION:{escape_xml(description)}")
+            lines.append(f"DESCRIPTION:{description}")
         if due:
             lines.append(f"DUE:{due}")
         if priority is not None:
@@ -307,7 +307,7 @@ class NextcloudService:
 
         resp = await self._client.put(
             f"/remote.php/dav/calendars/{self.username}/{cal}/{uid}.ics",
-            content="\n".join(lines),
+            content="\r\n".join(lines),
             headers={"Content-Type": "text/calendar; charset=utf-8"},
         )
         resp.raise_for_status()
@@ -805,15 +805,20 @@ class NextcloudService:
         return await self._ocs_get("/ocs/v2.php/apps/user_status/api/v1/user_status")
 
     async def user_status_set(self, status_type: str, message: str | None = None, icon: str | None = None) -> Any:
-        body: dict[str, Any] = {"statusType": status_type}
-        if message:
-            body["message"] = message
-        if icon:
-            body["statusIcon"] = icon
-        return await self._ocs_put("/ocs/v2.php/apps/user_status/api/v1/user_status", body)
+        # Set online/away/dnd/invisible/offline status
+        result = await self._ocs_put("/ocs/v2.php/apps/user_status/api/v1/user_status/status", {"statusType": status_type})
+        # Optionally set a custom message
+        if message or icon:
+            msg_body: dict[str, Any] = {}
+            if message:
+                msg_body["message"] = message
+            if icon:
+                msg_body["statusIcon"] = icon
+            result = await self._ocs_put("/ocs/v2.php/apps/user_status/api/v1/user_status/message/custom", msg_body)
+        return result
 
     async def user_status_clear(self) -> Any:
-        return await self._ocs_delete("/ocs/v2.php/apps/user_status/api/v1/user_status")
+        return await self._ocs_delete("/ocs/v2.php/apps/user_status/api/v1/user_status/message")
 
     # ══════════════════════════════════════════════════════════════════════
     # Search
@@ -860,14 +865,29 @@ class NextcloudService:
     async def mail_send(
         self, account_id: int, to: str, subject: str, body: str, cc: str | None = None, bcc: str | None = None
     ) -> Any:
-        data: dict[str, Any] = {"accountId": account_id, "to": to, "subject": subject, "body": body}
+        # Nextcloud Mail uses the outbox pattern: POST to outbox, then send
+        data: dict[str, Any] = {
+            "accountId": account_id,
+            "subject": subject,
+            "body": body,
+            "to": to,
+            "type": 0,  # 0 = new message
+        }
         if cc:
             data["cc"] = cc
         if bcc:
             data["bcc"] = bcc
-        resp = await self._client.post("/index.php/apps/mail/api/messages/send", json=data, headers={"OCS-APIRequest": "true"})
+        # Create outbox message
+        resp = await self._client.post("/index.php/apps/mail/api/outbox", json=data, headers={"OCS-APIRequest": "true"})
         resp.raise_for_status()
-        return resp.json() if resp.content else {"status": "sent"}
+        result = resp.json()
+        # Send it immediately
+        msg_id = result.get("id")
+        if msg_id:
+            send_resp = await self._client.post(f"/index.php/apps/mail/api/outbox/{msg_id}", headers={"OCS-APIRequest": "true"})
+            send_resp.raise_for_status()
+            return send_resp.json() if send_resp.content else {"status": "sent", "id": msg_id}
+        return result
 
     # ══════════════════════════════════════════════════════════════════════
     # Tags
@@ -1027,25 +1047,25 @@ class NextcloudService:
         for block in vcard_blocks:
             contact: dict[str, Any] = {}
             for line in block.split("\n"):
-                line = line.strip("\r")
+                line = line.strip("\r\n").replace("&#13;", "")
                 if line.startswith("FN:"):
-                    contact["fullName"] = line[3:]
+                    contact["fullName"] = line[3:].strip()
                 elif line.startswith("UID:"):
-                    contact["uid"] = line[4:]
+                    contact["uid"] = line[4:].strip()
                 elif "EMAIL" in line:
-                    v = line.split(":")[-1]
+                    v = line.split(":")[-1].strip()
                     if v:
                         contact["email"] = v
                 elif "TEL" in line:
-                    v = line.split(":")[-1]
+                    v = line.split(":")[-1].strip()
                     if v:
                         contact["phone"] = v
                 elif line.startswith("ORG:"):
-                    contact["org"] = line[4:]
+                    contact["org"] = line[4:].strip()
                 elif line.startswith("TITLE:"):
-                    contact["title"] = line[6:]
+                    contact["title"] = line[6:].strip()
                 elif line.startswith("NOTE:"):
-                    contact["note"] = line[5:]
+                    contact["note"] = line[5:].strip()
             if contact.get("fullName") or contact.get("uid"):
                 results.append(contact)
         return results
