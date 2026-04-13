@@ -10,19 +10,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
-      - name: Install & Build
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Verify tool registration
         run: |
-          npm ci
-          npm run build
+          uv run python -c "
+          from garza_mcp.server import mcp
+          tools = mcp._tool_manager._tools
+          assert len(tools) == 178, f'Expected 178 tools, got {len(tools)}'
+          print(f'All {len(tools)} tools registered successfully')
+          "
 
-      - name: Package dist
-        run: tar czf /tmp/garza-mcp-dist.tar.gz dist/ package.json package-lock.json
+      - name: Package Python code
+        run: tar czf /tmp/garza-mcp-python.tar.gz garza_mcp/ pyproject.toml uv.lock
 
       - name: Deploy to Mac Mini
         uses: appleboy/scp-action@v0.1.7
@@ -30,8 +34,8 @@ jobs:
           host: ${{ secrets.MAC_MINI_HOST }}
           username: ${{ secrets.MAC_MINI_USER }}
           password: ${{ secrets.MAC_MINI_PASSWORD }}
-          source: "dist/,package.json,package-lock.json"
-          target: "/Users/customer/projects/proton-unified-mcp/"
+          source: "garza_mcp/,pyproject.toml,uv.lock"
+          target: "/Users/customer/garza-mcp-python/"
           overwrite: true
 
       - name: Restart MCP Server
@@ -41,29 +45,13 @@ jobs:
           username: ${{ secrets.MAC_MINI_USER }}
           password: ${{ secrets.MAC_MINI_PASSWORD }}
           script: |
-            cd /Users/customer/projects/proton-unified-mcp
-            npm install --production
-            # Kill existing mcp-proxy on port 3104 and restart
-            pkill -f "mcp-proxy.*3104" 2>/dev/null || true
-            pkill -f "node.*proton-unified-mcp/dist/index.js" 2>/dev/null || true
+            export PATH="$HOME/.local/bin:$PATH"
+            cd /Users/customer/garza-mcp-python
+            uv sync
+            # Restart via LaunchAgent
+            launchctl unload ~/Library/LaunchAgents/com.garza.mcp-python.plist 2>/dev/null || true
             sleep 2
-            nohup /Users/customer/.local/bin/mcp-proxy \
-              --port 3104 --host 127.0.0.1 \
-              --transport streamablehttp --allow-origin "*" \
-              -e PROTONMAIL_USERNAME jadengarza@pm.me \
-              -e PROTONMAIL_PASSWORD "$PROTONMAIL_PASSWORD" \
-              -e PROTONMAIL_SMTP_HOST 127.0.0.1 \
-              -e PROTONMAIL_SMTP_PORT 1025 \
-              -e PROTONMAIL_IMAP_HOST 127.0.0.1 \
-              -e PROTONMAIL_IMAP_PORT 1143 \
-              -e PROTON_DRIVE_PATH "/Users/customer/Library/CloudStorage/ProtonDrive-jadengarza@pm.me-folder/" \
-              -e ICLOUD_DRIVE_PATH "/Users/customer/Library/Mobile Documents/com~apple~CloudDocs/" \
-              -e BEEPER_API_URL http://localhost:23373 \
-              -e BEEPER_TOKEN "$BEEPER_TOKEN" \
-              -e BEEPER_DB_PATH "/Users/customer/Library/Application Support/BeeperTexts/index.db" \
-              -e DEBUG false \
-              -- /Users/customer/node/bin/node /Users/customer/projects/proton-unified-mcp/dist/index.js \
-              > /tmp/mcp-unified.log 2>&1 &
-            sleep 3
+            launchctl load ~/Library/LaunchAgents/com.garza.mcp-python.plist
+            sleep 5
             # Verify server is running
-            lsof -i :3104 -sTCP:LISTEN | head -3
+            curl -s http://localhost:3104/health
