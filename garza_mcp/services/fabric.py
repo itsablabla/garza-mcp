@@ -57,6 +57,9 @@ class FabricService:
 
     async def list_notepads(self, parent_id: str | None = None) -> Any:
         # Fabric API doesn't support GET listing; use search to list notepads
+        # Note: parent_id filtering is not supported by the search endpoint
+        if parent_id:
+            logger.warning("parent_id filtering not supported by Fabric search API — returning all notepads")
         return await self._request("POST", "/v2/search", json={"query": "*", "limit": 50})
 
     async def get_notepad(self, notepad_id: str) -> Any:
