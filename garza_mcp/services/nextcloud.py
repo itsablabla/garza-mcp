@@ -19,7 +19,7 @@ from garza_mcp.config import NEXTCLOUD_PASSWORD, NEXTCLOUD_URL, NEXTCLOUD_USERNA
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT = 30.0
+DEFAULT_TIMEOUT = 120.0
 
 
 class NextcloudService:
@@ -196,13 +196,50 @@ class NextcloudService:
         description: str | None = None,
         location: str | None = None,
     ) -> dict[str, Any]:
-        cal = calendar_id or "personal"
+        # Auto-detect a VEVENT-capable calendar if none specified
+        cal = calendar_id
+        if not cal:
+            try:
+                calendars = await self.calendar_list()
+                # Prefer a calendar that likely supports VEVENT (avoid task-only)
+                for c in calendars:
+                    cid = c.get("id", "")
+                    # Skip task-only calendars
+                    if "task" in cid.lower() or "todo" in cid.lower():
+                        continue
+                    cal = cid
+                    break
+                if not cal and calendars:
+                    cal = calendars[0].get("id", "personal")
+            except Exception:
+                pass
+            if not cal:
+                cal = "personal"
         uid = str(uuid.uuid4())
         desc = f"DESCRIPTION:{description}\r\n" if description else ""
         loc = f"LOCATION:{location}\r\n" if location else ""
+        # Ensure datetime values are properly formatted for iCal
+        # Accept both "20260415T100000Z" and "2026-04-15T10:00:00Z" formats
+        def _ical_dt(dt: str) -> str:
+            # If already in basic iCal format, return as-is
+            if "T" in dt and "-" not in dt.split("T")[0]:
+                return dt
+            # Convert ISO 8601 to iCal basic format
+            # Only strip dashes/colons from date and time parts, preserve tz offset sign
+            date_part = dt.split("T")[0].replace("-", "")
+            rest = dt.split("T")[1] if "T" in dt else ""
+            # Separate time digits from timezone offset (+ or - after time)
+            m = re.match(r'^([\d:]+)(.*)', rest)
+            if m:
+                time_part = m.group(1).replace(":", "")
+                tz_part = m.group(2).replace(":", "")
+                return f"{date_part}T{time_part}{tz_part}"
+            return dt.replace("-", "").replace(":", "")
+        ical_start = _ical_dt(start)
+        ical_end = _ical_dt(end)
         ical = (
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//GarzaMCP//EN\r\n"
-            f"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{start}\r\nDTEND:{end}\r\n"
+            f"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{ical_start}\r\nDTEND:{ical_end}\r\n"
             f"SUMMARY:{summary}\r\n{desc}{loc}END:VEVENT\r\nEND:VCALENDAR"
         )
         resp = await self._client.put(
@@ -629,19 +666,30 @@ class NextcloudService:
         resp.raise_for_status()
         return resp.json()
 
-    async def tables_create_row(self, table_id: int, data: dict[str, Any]) -> Any:
+    async def tables_create_row(self, table_id: int, data: dict[str, Any] | list[dict[str, Any]]) -> Any:
+        # NC Tables API v2 expects data as list of {columnId, value} objects
+        if isinstance(data, dict):
+            # Convert {"columnId": value} dict to [{"columnId": id, "value": val}] list
+            row_data = [{"columnId": int(k), "value": v} for k, v in data.items()]
+        else:
+            row_data = data
         resp = await self._client.post(
             f"/index.php/apps/tables/api/1/tables/{table_id}/rows",
-            json={"data": data},
+            json={"data": row_data},
             headers={"OCS-APIRequest": "true"},
         )
         resp.raise_for_status()
         return resp.json()
 
-    async def tables_update_row(self, row_id: int, data: dict[str, Any]) -> Any:
+    async def tables_update_row(self, row_id: int, data: dict[str, Any] | list[dict[str, Any]]) -> Any:
+        # NC Tables API v2 expects data as list of {columnId, value} objects
+        if isinstance(data, dict):
+            row_data = [{"columnId": int(k), "value": v} for k, v in data.items()]
+        else:
+            row_data = data
         resp = await self._client.put(
             f"/index.php/apps/tables/api/1/rows/{row_id}",
-            json={"data": data},
+            json={"data": row_data},
             headers={"OCS-APIRequest": "true"},
         )
         resp.raise_for_status()

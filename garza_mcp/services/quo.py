@@ -46,6 +46,11 @@ class QuoService:
 
     async def list_messages(self, phone_number_id: str, participants: list[str], max_results: int | None = None) -> Any:
         params: list[tuple[str, str]] = [("phoneNumberId", phone_number_id)]
+        if not participants:
+            # OpenPhone API rejects empty participants — use phoneNumberId only
+            if max_results:
+                params.append(("maxResults", str(max_results)))
+            return await self._request("GET", "/messages", params=params)
         for p in participants:
             params.append(("participants[]", p))
         if max_results:
@@ -58,6 +63,11 @@ class QuoService:
     # ── Calls ─────────────────────────────────────────────────────────────
     async def list_calls(self, phone_number_id: str, participants: list[str], max_results: int | None = None) -> Any:
         params: list[tuple[str, str]] = [("phoneNumberId", phone_number_id)]
+        if not participants:
+            # OpenPhone API rejects empty participants — use phoneNumberId only
+            if max_results:
+                params.append(("maxResults", str(max_results)))
+            return await self._request("GET", "/calls", params=params)
         for p in participants:
             params.append(("participants[]", p))
         if max_results:

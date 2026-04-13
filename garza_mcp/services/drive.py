@@ -14,7 +14,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT = 30
+DEFAULT_TIMEOUT = 120
 
 
 def _format_bytes(n: int) -> str:
