@@ -420,10 +420,6 @@ async def _beeper_call(coro: Any) -> str:
         return _json(await coro)
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
         return _BEEPER_OFFLINE
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
-            return _BEEPER_OFFLINE
-        raise
 
 @mcp.tool()
 async def beeper_list_accounts() -> str:
@@ -994,19 +990,19 @@ async def nc_trash_empty() -> str:
 
 _DECK_NOT_INSTALLED = _json({"error": "Deck app not installed on this Nextcloud instance", "hint": "Install via: occ app:install deck"})
 
-async def _deck_call(coro: Any) -> str:
-    """Wrap Deck API calls with graceful 404 handling for missing app."""
+async def _deck_call(coro: Any, is_app_check: bool = False) -> str:
+    """Wrap Deck API calls. Only treat 404 as 'not installed' for listing endpoints."""
     try:
         return _json(await coro)
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404:
+        if e.response.status_code == 404 and is_app_check:
             return _DECK_NOT_INSTALLED
         raise
 
 @mcp.tool()
 async def nc_deck_list_boards() -> str:
     """List Nextcloud Deck boards."""
-    return await _deck_call(_nc().deck_list_boards())
+    return await _deck_call(_nc().deck_list_boards(), is_app_check=True)
 
 @mcp.tool()
 async def nc_deck_get_board(boardId: int) -> str:
@@ -1026,7 +1022,7 @@ async def nc_deck_delete_board(boardId: int) -> str:
 @mcp.tool()
 async def nc_deck_list_stacks(boardId: int) -> str:
     """List stacks in a Nextcloud Deck board."""
-    return await _deck_call(_nc().deck_list_stacks(boardId))
+    return await _deck_call(_nc().deck_list_stacks(boardId), is_app_check=True)
 
 @mcp.tool()
 async def nc_deck_create_stack(boardId: int, title: str, order: int | None = None) -> str:
