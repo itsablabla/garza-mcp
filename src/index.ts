@@ -1215,8 +1215,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "mail_status": {
         const smtpOk = await smtp.verifyConnection().catch(() => false);
-        const imapOk = imap.isConnected();
-        return ok(`SMTP: ${smtpOk ? 'connected' : 'not connected'} | IMAP: ${imapOk ? 'connected' : 'not connected'} | User: ${PROTONMAIL_USERNAME}`);
+        let imapStatus = 'not connected';
+        if (imap.isConnected()) {
+          imapStatus = 'connected';
+        } else {
+          // Attempt reconnection and report result
+          try {
+            await imap.connect();
+            imapStatus = 'reconnected';
+          } catch (e: any) {
+            imapStatus = `failed: ${(e.message || 'unknown error').slice(0, 80)}`;
+          }
+        }
+        return ok(`SMTP: ${smtpOk ? 'connected' : 'not connected'} | IMAP: ${imapStatus} | User: ${PROTONMAIL_USERNAME}`);
       }
     }
 
@@ -1693,3 +1704,14 @@ main().catch((error) => {
   console.error('[FATAL]', error);
   process.exit(1);
 });
+
+// Graceful shutdown — clean up IMAP connection
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, async () => {
+    logger.info(`Received ${sig}, shutting down...`, 'Main');
+    const forceExit = setTimeout(() => process.exit(0), 5_000);
+    try { await imap.disconnect(); } catch { /* ignore */ }
+    clearTimeout(forceExit);
+    process.exit(0);
+  });
+}
