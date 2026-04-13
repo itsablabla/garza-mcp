@@ -271,7 +271,7 @@ export class IMAPService {
         try {
           // Try OR(SUBJECT, FROM) search first
           const searchResult = await withTimeout(
-            this.client.search({ or: [{ subject: query }, { from: query }] }),
+            this.client.search({ or: [{ subject: query }, { from: query }] }, { uid: true }),
             SEARCH_TIMEOUT, 'imap-search'
           );
           uids = searchResult as number[];
@@ -283,7 +283,7 @@ export class IMAPService {
           );
           try {
             const subjectResult = await withTimeout(
-              this.client.search({ subject: query }),
+              this.client.search({ subject: query }, { uid: true }),
               SEARCH_TIMEOUT, 'imap-search-subject'
             );
             uids = subjectResult as number[];
