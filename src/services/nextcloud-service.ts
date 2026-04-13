@@ -109,6 +109,10 @@ export class NextcloudService {
 
   // ── XML parsing helpers ─────────────────────────────────────────────
 
+  private escapeXml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   private extractXmlValues(xml: string, tag: string): string[] {
     const regex = new RegExp(`<(?:[a-z]+:)?${tag}[^>]*>([\\s\\S]*?)</(?:[a-z]+:)?${tag}>`, 'gi');
     const results: string[] = [];
@@ -397,12 +401,14 @@ export class NextcloudService {
   }
 
   async filesSearch(query: string, path?: string): Promise<any[]> {
+    const safeQuery = this.escapeXml(query);
+    const safePath = this.escapeXml((path || '').replace(/^\//, ''));
     const body = `<?xml version="1.0" encoding="utf-8" ?>
 <D:searchrequest xmlns:D="DAV:" xmlns:oc="http://owncloud.org/ns">
   <D:basicsearch>
     <D:select><D:prop><D:getlastmodified/><D:getcontentlength/><D:getcontenttype/><D:resourcetype/><oc:fileid/></D:prop></D:select>
-    <D:from><D:scope><D:href>/files/${this.username}/${(path || '').replace(/^\//, '')}</D:href><D:depth>infinity</D:depth></D:scope></D:from>
-    <D:where><D:like><D:prop><D:displayname/></D:prop><D:literal>%${query}%</D:literal></D:like></D:where>
+    <D:from><D:scope><D:href>/files/${this.username}/${safePath}</D:href><D:depth>infinity</D:depth></D:scope></D:from>
+    <D:where><D:like><D:prop><D:displayname/></D:prop><D:literal>%${safeQuery}%</D:literal></D:like></D:where>
   </D:basicsearch>
 </D:searchrequest>`;
     const xml = await this.davRequest('SEARCH', '/remote.php/dav/', body, { 'Content-Type': 'application/xml' });

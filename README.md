@@ -86,7 +86,7 @@ Memory, notes, and semantic search via the Fabric AI API. Optional — requires 
 |---|---|
 | `fabric_search` | Semantic search across knowledge base |
 | `fabric_add_memory` | Add a new memory/fact for future retrieval |
-| `fabric_list_memories` | List recent stored memories |
+| `fabric_recall_memories` | Recall memories by semantic search query |
 | `fabric_create_note` | Create a new notepad/document |
 | `fabric_list_notes` | List notepads in a folder |
 | `fabric_get_note` | Get a specific notepad by ID |
