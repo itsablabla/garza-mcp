@@ -225,6 +225,15 @@ class NextcloudService:
             if "T" in dt and "-" not in dt.split("T")[0]:
                 return dt
             # Convert ISO 8601 to iCal basic format
+            # Only strip dashes/colons from date and time parts, preserve tz offset sign
+            date_part = dt.split("T")[0].replace("-", "")
+            rest = dt.split("T")[1] if "T" in dt else ""
+            # Separate time digits from timezone offset (+ or - after time)
+            m = re.match(r'^([\d:]+)(.*)', rest)
+            if m:
+                time_part = m.group(1).replace(":", "")
+                tz_part = m.group(2).replace(":", "")
+                return f"{date_part}T{time_part}{tz_part}"
             return dt.replace("-", "").replace(":", "")
         ical_start = _ical_dt(start)
         ical_end = _ical_dt(end)
