@@ -46,7 +46,8 @@ class FabricService:
         return await self._request("POST", "/v2/memories", json={"source": "text", "content": content})
 
     async def recall_memories(self, query: str, limit: int = 20) -> Any:
-        return await self._request("POST", "/v2/memories/recall", json={"query": query, "limit": limit})
+        # Fabric API uses search for memory recall
+        return await self._request("POST", "/v2/search", json={"query": query, "limit": limit})
 
     async def create_notepad(self, text: str, name: str | None = None, parent_id: str | None = None) -> Any:
         body: dict[str, Any] = {"text": text, "parentId": parent_id or self.default_parent}
@@ -55,10 +56,11 @@ class FabricService:
         return await self._request("POST", "/v2/notepads", json=body)
 
     async def list_notepads(self, parent_id: str | None = None) -> Any:
-        params: dict[str, str] = {}
+        # Fabric API doesn't support GET listing; use search to list notepads
+        # Note: parent_id filtering is not supported by the search endpoint
         if parent_id:
-            params["parentId"] = parent_id
-        return await self._request("GET", "/v2/notepads", params=params)
+            logger.warning("parent_id filtering not supported by Fabric search API — returning all notepads")
+        return await self._request("POST", "/v2/search", json={"query": "*", "limit": 50})
 
     async def get_notepad(self, notepad_id: str) -> Any:
         return await self._request("GET", f"/v2/notepads/{notepad_id}")

@@ -128,9 +128,13 @@ class DriveService:
         return {"from": source, "to": destination}
 
     async def get_file_info(self, path: str) -> dict[str, Any]:
-        """Get file info using stat command."""
+        """Get file info using stat command (macOS compatible)."""
         target = self._resolve(path)
-        output = await self._run(f'stat -f "%N|%z|%Sm|%Sb|%HT" {shlex.quote(target)} 2>/dev/null || stat --format="%n|%s|%y|%w|%F" {shlex.quote(target)}')
+        # macOS stat format: -f with format string
+        output = await self._run(
+            f'stat -f "%N|%z|%Sm|%Sb|%HT" {shlex.quote(target)}',
+            timeout=10,
+        )
         parts = output.split("|")
         name = os.path.basename(parts[0]) if parts else os.path.basename(path)
         size = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0

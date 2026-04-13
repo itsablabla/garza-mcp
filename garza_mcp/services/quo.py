@@ -45,9 +45,11 @@ class QuoService:
         return await self._request("POST", "/messages", json={"from": from_number, "to": [to], "content": content})
 
     async def list_messages(self, phone_number_id: str, participants: list[str], max_results: int | None = None) -> Any:
-        params: dict[str, Any] = {"phoneNumberId": phone_number_id, "participants": participants}
+        params: list[tuple[str, str]] = [("phoneNumberId", phone_number_id)]
+        for p in participants:
+            params.append(("participants[]", p))
         if max_results:
-            params["maxResults"] = max_results
+            params.append(("maxResults", str(max_results)))
         return await self._request("GET", "/messages", params=params)
 
     async def get_message(self, message_id: str) -> Any:
@@ -55,9 +57,11 @@ class QuoService:
 
     # ── Calls ─────────────────────────────────────────────────────────────
     async def list_calls(self, phone_number_id: str, participants: list[str], max_results: int | None = None) -> Any:
-        params: dict[str, Any] = {"phoneNumberId": phone_number_id, "participants": participants}
+        params: list[tuple[str, str]] = [("phoneNumberId", phone_number_id)]
+        for p in participants:
+            params.append(("participants[]", p))
         if max_results:
-            params["maxResults"] = max_results
+            params.append(("maxResults", str(max_results)))
         return await self._request("GET", "/calls", params=params)
 
     async def get_call(self, call_id: str) -> Any:
