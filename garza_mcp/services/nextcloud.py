@@ -853,7 +853,11 @@ class NextcloudService:
         params: dict[str, Any] = {"accountId": account_id, "folderId": folder_id}
         if limit:
             params["limit"] = limit
-        resp = await self._client.get("/index.php/apps/mail/api/messages", params=params, headers={"OCS-APIRequest": "true"})
+        resp = await self._client.get(
+            "/index.php/apps/mail/api/messages",
+            params=params,
+            headers={"OCS-APIRequest": "true", "requesttoken": "nocheck"},
+        )
         resp.raise_for_status()
         return resp.json()
 

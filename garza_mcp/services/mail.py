@@ -96,13 +96,30 @@ class ImapService:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 
+            # Connect plain first (Proton Bridge uses STARTTLS, not direct SSL)
+            # 10MB buffer for 736GB mailbox — UID SEARCH can return thousands of UIDs
             self._reader, self._writer = await asyncio.wait_for(
-                asyncio.open_connection(self.host, self.port, ssl=ctx, limit=1024 * 1024),
+                asyncio.open_connection(self.host, self.port, limit=10 * 1024 * 1024),
                 timeout=CONNECT_TIMEOUT,
             )
             # Read greeting
             greeting = await asyncio.wait_for(self._reader.readline(), timeout=CONNECT_TIMEOUT)
             logger.debug("IMAP greeting: %s", greeting.decode().strip())
+
+            # Upgrade to TLS via STARTTLS
+            tag = f"A{self._tag_counter:04d}"
+            self._tag_counter += 1
+            self._writer.write(f"{tag} STARTTLS\r\n".encode())
+            await self._writer.drain()
+            starttls_resp = await asyncio.wait_for(self._reader.readline(), timeout=CONNECT_TIMEOUT)
+            logger.debug("STARTTLS response: %s", starttls_resp.decode().strip())
+            # Upgrade the transport to TLS
+            transport = self._writer.transport
+            protocol = transport.get_protocol()
+            loop = asyncio.get_event_loop()
+            new_transport = await loop.start_tls(transport, protocol, ctx)
+            self._reader._transport = new_transport  # type: ignore[attr-defined]
+            self._writer._transport = new_transport  # type: ignore[attr-defined]
 
             # Login — escape backslash and double-quote per RFC 3501
             safe_user = self.username.replace('\\', '\\\\').replace('"', '\\"')

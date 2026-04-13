@@ -148,12 +148,13 @@ class BeeperDbService:
 
     async def search_contacts(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         safe_query = query.replace("'", "''")
+        # Use participants table first (faster), fall back to mx_room_messages
         sql = f"""
-            SELECT DISTINCT senderContactID as sender, COUNT(*) as message_count
-            FROM mx_room_messages
-            WHERE senderContactID LIKE '%{safe_query}%'
-            GROUP BY senderContactID
-            ORDER BY message_count DESC
+            SELECT identifier as sender, COUNT(*) as match_count
+            FROM participant_identifiers
+            WHERE identifier LIKE '%{safe_query}%'
+            GROUP BY identifier
+            ORDER BY match_count DESC
             LIMIT {limit};
         """
         return await self._query_json(sql)
@@ -162,7 +163,7 @@ class BeeperDbService:
         safe_chat = chat_id.replace("'", "''")
         safe_event = event_id.replace("'", "''")
         sql = f"""
-            SELECT r.senderContactID as sender, r.key as reaction,
+            SELECT r.senderID as sender, r.description as reaction,
                    datetime(r.timestamp/1000, 'unixepoch') as date
             FROM mx_reactions r
             WHERE r.roomID = '{safe_chat}'
