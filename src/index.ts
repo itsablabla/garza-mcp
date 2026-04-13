@@ -1709,7 +1709,9 @@ main().catch((error) => {
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, async () => {
     logger.info(`Received ${sig}, shutting down...`, 'Main');
+    const forceExit = setTimeout(() => process.exit(0), 5_000);
     try { await imap.disconnect(); } catch { /* ignore */ }
+    clearTimeout(forceExit);
     process.exit(0);
   });
 }
