@@ -104,8 +104,10 @@ class ImapService:
             greeting = await asyncio.wait_for(self._reader.readline(), timeout=CONNECT_TIMEOUT)
             logger.debug("IMAP greeting: %s", greeting.decode().strip())
 
-            # Login
-            await self._send(f'LOGIN "{self.username}" "{self.password}"', timeout=CONNECT_TIMEOUT)
+            # Login — escape backslash and double-quote per RFC 3501
+            safe_user = self.username.replace('\\', '\\\\').replace('"', '\\"')
+            safe_pass = self.password.replace('\\', '\\\\').replace('"', '\\"')
+            await self._send(f'LOGIN "{safe_user}" "{safe_pass}"', timeout=CONNECT_TIMEOUT)
             self._connected = True
             self._last_activity = asyncio.get_event_loop().time()
             logger.info("IMAP connected to %s:%d as %s", self.host, self.port, self.username)

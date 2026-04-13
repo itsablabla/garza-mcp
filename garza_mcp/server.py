@@ -64,7 +64,7 @@ beeper_db = BeeperDbService(BEEPER_DB_PATH)
 fabric = FabricService() if FABRIC_API_KEY else None
 quo = QuoService() if QUO_API_KEY else None
 voicenotes = VoicenotesService() if VOICENOTES_TOKEN else None
-nextcloud = NextcloudService() if NEXTCLOUD_URL else None
+nextcloud = NextcloudService() if NEXTCLOUD_URL and NEXTCLOUD_PASSWORD else None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
