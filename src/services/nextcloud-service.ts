@@ -51,6 +51,7 @@ export class NextcloudService {
       clearTimeout(timeout);
       if (rawResponse) return res as any;
       const text = await res.text();
+      if (res.status === 304) return [] as any; // Not Modified — return empty
       if (!res.ok) throw new Error(`Nextcloud API ${res.status} ${method} ${path}: ${text.slice(0, 500)}`);
       if (!text) return {} as T;
       try { return JSON.parse(text); } catch { return text as any; }
@@ -479,7 +480,7 @@ export class NextcloudService {
   }
 
   async deckUpdateCard(boardId: number, stackId: number, cardId: number, title?: string, description?: string, duedate?: string): Promise<any> {
-    const body: any = {};
+    const body: any = { type: 'plain', owner: this.username };
     if (title) body.title = title;
     if (description !== undefined) body.description = description;
     if (duedate !== undefined) body.duedate = duedate;
@@ -523,8 +524,12 @@ export class NextcloudService {
   }
 
   async tablesGetRows(tableId: number, limit?: number, offset?: number): Promise<any> {
-    const body: any = { viewId: null, limit: limit || 50, offset: offset || 0 };
-    return this.ocsPost(`/ocs/v2.php/apps/tables/api/2/tables/${tableId}/rows/simple`, body);
+    // Tables API uses /index.php/apps/tables/api/1/ (not OCS wrapper)
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', String(limit));
+    if (offset) params.append('offset', String(offset));
+    const qs = params.toString();
+    return this.req('GET', `/index.php/apps/tables/api/1/tables/${tableId}/rows${qs ? '?' + qs : ''}`, undefined, { 'Accept': 'application/json' });
   }
 
   async tablesCreateRow(tableId: number, data: Record<string, any>): Promise<any> {
@@ -651,7 +656,9 @@ export class NextcloudService {
     if (limit) params.append('limit', String(limit));
     if (sinceId) params.append('since', String(sinceId));
     const qs = params.toString();
-    return this.ocsGet(`/ocs/v2.php/apps/activity/api/v2/activity${qs ? '?' + qs : ''}`);
+    // Use req() with Accept: application/json directly to avoid 304 caching issues
+    const data = await this.req<any>('GET', `/ocs/v2.php/apps/activity/api/v2/activity${qs ? '?' + qs : ''}`, undefined, { 'Accept': 'application/json', 'Cache-Control': 'no-cache' });
+    return data?.ocs?.data ?? data;
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -684,14 +691,19 @@ export class NextcloudService {
   }
 
   async userStatusSet(statusType: string, message?: string, icon?: string): Promise<any> {
-    const body: any = { statusType };
-    if (message) body.message = message;
-    if (icon) body.statusIcon = icon;
-    return this.ocsPut('/ocs/v2.php/apps/user_status/api/v1/user_status', body);
+    // Set the status type (online, away, dnd, invisible, offline)
+    await this.ocsPut('/ocs/v2.php/apps/user_status/api/v1/user_status/status', { statusType });
+    // Optionally set a custom message
+    if (message || icon) {
+      const msgBody: any = { message: message || '' };
+      if (icon) msgBody.statusIcon = icon;
+      await this.ocsPut('/ocs/v2.php/apps/user_status/api/v1/user_status/message/custom', msgBody);
+    }
+    return { statusType, message, icon };
   }
 
   async userStatusClear(): Promise<any> {
-    return this.ocsDelete('/ocs/v2.php/apps/user_status/api/v1/user_status');
+    return this.ocsDelete('/ocs/v2.php/apps/user_status/api/v1/user_status/message');
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -711,11 +723,12 @@ export class NextcloudService {
   // ══════════════════════════════════════════════════════════════════════
 
   async mailListAccounts(): Promise<any> {
-    return this.req('GET', '/index.php/apps/mail/api/accounts', undefined, { 'Accept': 'application/json' });
+    return this.req('GET', '/index.php/apps/mail/api/accounts', undefined, { 'Accept': 'application/json', 'requesttoken': 'nocheck' });
   }
 
   async mailListMailboxes(accountId: number): Promise<any> {
-    return this.req('GET', `/index.php/apps/mail/api/accounts/${accountId}/mailboxes`, undefined, { 'Accept': 'application/json' });
+    // NC Mail API uses /mailboxes?accountId= query param (NOT path param)
+    return this.req('GET', `/index.php/apps/mail/api/mailboxes?accountId=${accountId}`, undefined, { 'Accept': 'application/json', 'requesttoken': 'nocheck' });
   }
 
   async mailListMessages(accountId: number, folderId: string, limit?: number): Promise<any> {
@@ -824,8 +837,8 @@ export class NextcloudService {
     return this.ocsGet(`/ocs/v2.php/apps/forms/api/v3/forms/${formId}`);
   }
 
-  async formsGetSubmissions(formHash: string): Promise<any> {
-    return this.ocsGet(`/ocs/v2.php/apps/forms/api/v3/submissions/${formHash}`);
+  async formsGetSubmissions(formId: number): Promise<any> {
+    return this.ocsGet(`/ocs/v2.php/apps/forms/api/v3/forms/${formId}/submissions`);
   }
 
   // ══════════════════════════════════════════════════════════════════════

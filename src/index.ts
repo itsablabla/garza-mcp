@@ -1024,7 +1024,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       // ── Forms ──
       { name: "nc_forms_list", description: "List all Nextcloud Forms", inputSchema: { type: "object" as const, properties: {} } },
       { name: "nc_forms_get", description: "Get a specific Nextcloud Form with questions", inputSchema: { type: "object" as const, properties: { formId: { type: "number" } }, required: ["formId"] } },
-      { name: "nc_forms_submissions", description: "Get submissions for a Nextcloud Form", inputSchema: { type: "object" as const, properties: { formHash: { type: "string", description: "Form hash/slug" } }, required: ["formHash"] } },
+      { name: "nc_forms_submissions", description: "Get submissions for a Nextcloud Form", inputSchema: { type: "object" as const, properties: { formId: { type: "number", description: "Form ID" } }, required: ["formId"] } },
     ] : []),
 
   ],
@@ -1658,7 +1658,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Forms
         case 'nc_forms_list': return ok(JSON.stringify(await nextcloud.formsList(), null, 2));
         case 'nc_forms_get': { if (!a.formId) return err('formId required'); return ok(JSON.stringify(await nextcloud.formsGet(a.formId), null, 2)); }
-        case 'nc_forms_submissions': { if (!a.formHash) return err('formHash required'); return ok(JSON.stringify(await nextcloud.formsGetSubmissions(a.formHash), null, 2)); }
+        case 'nc_forms_submissions': { if (!a.formId) return err('formId required'); return ok(JSON.stringify(await nextcloud.formsGetSubmissions(a.formId), null, 2)); }
       }
     }
 
