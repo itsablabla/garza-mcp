@@ -71,7 +71,7 @@ class DriveService:
         """List files using shell glob to avoid stat() hangs on FUSE."""
         target = self._resolve(path)
         # Shell glob loop avoids stat() on every entry
-        cmd = f'''cd "{target}" 2>/dev/null && for f in * .*; do
+        cmd = f'''cd {shlex.quote(target)} 2>/dev/null && for f in * .*; do
             [ "$f" = "." ] || [ "$f" = ".." ] || [ "$f" = "*" ] || [ "$f" = ".*" ] && continue
             if [ -d "$f" 2>/dev/null ]; then echo "[dir] $f"
             else echo "[file] $f"; fi
@@ -80,7 +80,7 @@ class DriveService:
             output = await self._run(cmd)
         except Exception:
             # Fallback to ls
-            output = await self._run(f'ls -1Ap "{target}" 2>/dev/null || echo ""')
+            output = await self._run(f'ls -1Ap {shlex.quote(target)} 2>/dev/null || echo ""')
 
         items: list[dict[str, Any]] = []
         for line in output.splitlines():
@@ -101,36 +101,36 @@ class DriveService:
     async def read_file(self, path: str) -> str:
         """Read file contents via cat with timeout."""
         target = self._resolve(path)
-        return await self._run(f'cat "{target}"', timeout=15)
+        return await self._run(f'cat {shlex.quote(target)}', timeout=15)
 
     async def write_file(self, path: str, content: str) -> dict[str, str]:
         """Write content to a file."""
         target = self._resolve(path)
         # Use printf to handle special characters
         escaped = content.replace("\\", "\\\\").replace("'", "'\\''")
-        await self._run(f"printf '%s' '{escaped}' > \"{target}\"")
+        await self._run(f"printf '%s' '{escaped}' > {shlex.quote(target)}")
         return {"path": path, "status": "written"}
 
     async def create_folder(self, path: str) -> dict[str, str]:
         target = self._resolve(path)
-        await self._run(f'mkdir -p "{target}"')
+        await self._run(f'mkdir -p {shlex.quote(target)}')
         return {"path": path, "status": "created"}
 
     async def delete_item(self, path: str) -> dict[str, str]:
         target = self._resolve(path)
-        await self._run(f'rm -rf "{target}"')
+        await self._run(f'rm -rf {shlex.quote(target)}')
         return {"deleted": path}
 
     async def move_item(self, source: str, destination: str) -> dict[str, str]:
         src = self._resolve(source)
         dst = self._resolve(destination)
-        await self._run(f'mv "{src}" "{dst}"')
+        await self._run(f'mv {shlex.quote(src)} {shlex.quote(dst)}')
         return {"from": source, "to": destination}
 
     async def get_file_info(self, path: str) -> dict[str, Any]:
         """Get file info using stat command."""
         target = self._resolve(path)
-        output = await self._run(f'stat -f "%N|%z|%Sm|%Sb|%HT" "{target}" 2>/dev/null || stat --format="%n|%s|%y|%w|%F" "{target}"')
+        output = await self._run(f'stat -f "%N|%z|%Sm|%Sb|%HT" {shlex.quote(target)} 2>/dev/null || stat --format="%n|%s|%y|%w|%F" {shlex.quote(target)}')
         parts = output.split("|")
         name = os.path.basename(parts[0]) if parts else os.path.basename(path)
         size = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
@@ -148,7 +148,7 @@ class DriveService:
         """Search for files using find with maxdepth to avoid timeouts."""
         target = self._resolve(path)
         safe_query = shlex.quote(f"*{query}*")
-        output = await self._run(f'find "{target}" -maxdepth 3 -iname {safe_query} 2>/dev/null | head -100', timeout=30)
+        output = await self._run(f'find {shlex.quote(target)} -maxdepth 3 -iname {safe_query} 2>/dev/null | head -100', timeout=30)
         results: list[dict[str, Any]] = []
         for line in output.splitlines():
             line = line.strip()
@@ -167,13 +167,13 @@ class DriveService:
         """Get drive stats with limited depth to avoid timeouts."""
         # Count files and dirs separately with maxdepth
         files_output = await self._run(
-            f'find "{self.base_path}" -maxdepth 2 -type f 2>/dev/null | wc -l', timeout=60
+            f'find {shlex.quote(self.base_path)} -maxdepth 2 -type f 2>/dev/null | wc -l', timeout=60
         )
         dirs_output = await self._run(
-            f'find "{self.base_path}" -maxdepth 2 -type d 2>/dev/null | wc -l', timeout=60
+            f'find {shlex.quote(self.base_path)} -maxdepth 2 -type d 2>/dev/null | wc -l', timeout=60
         )
         size_output = await self._run(
-            f'du -sk "{self.base_path}" 2>/dev/null | cut -f1', timeout=60
+            f'du -sk {shlex.quote(self.base_path)} 2>/dev/null | cut -f1', timeout=60
         )
 
         total_files = int(files_output.strip()) if files_output.strip().isdigit() else 0

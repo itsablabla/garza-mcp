@@ -83,33 +83,37 @@ class ImapService:
         return lines
 
     async def connect(self) -> None:
-        """Connect and authenticate to the IMAP server."""
+        """Connect and authenticate to the IMAP server (acquires lock)."""
         async with self._lock:
-            if self._connected:
-                return
-            try:
-                ctx = ssl.create_default_context()
-                ctx.check_hostname = False
-                ctx.verify_mode = ssl.CERT_NONE
+            await self._connect_unlocked()
 
-                self._reader, self._writer = await asyncio.wait_for(
-                    asyncio.open_connection(self.host, self.port, ssl=ctx),
-                    timeout=CONNECT_TIMEOUT,
-                )
-                # Read greeting
-                greeting = await asyncio.wait_for(self._reader.readline(), timeout=CONNECT_TIMEOUT)
-                logger.debug("IMAP greeting: %s", greeting.decode().strip())
+    async def _connect_unlocked(self) -> None:
+        """Internal connect without acquiring the lock."""
+        if self._connected:
+            return
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
 
-                # Login
-                await self._send(f'LOGIN "{self.username}" "{self.password}"', timeout=CONNECT_TIMEOUT)
-                self._connected = True
-                self._last_activity = asyncio.get_event_loop().time()
-                logger.info("IMAP connected to %s:%d as %s", self.host, self.port, self.username)
-            except Exception:
-                self._connected = False
-                if self._writer:
-                    self._writer.close()
-                raise
+            self._reader, self._writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port, ssl=ctx),
+                timeout=CONNECT_TIMEOUT,
+            )
+            # Read greeting
+            greeting = await asyncio.wait_for(self._reader.readline(), timeout=CONNECT_TIMEOUT)
+            logger.debug("IMAP greeting: %s", greeting.decode().strip())
+
+            # Login
+            await self._send(f'LOGIN "{self.username}" "{self.password}"', timeout=CONNECT_TIMEOUT)
+            self._connected = True
+            self._last_activity = asyncio.get_event_loop().time()
+            logger.info("IMAP connected to %s:%d as %s", self.host, self.port, self.username)
+        except Exception:
+            self._connected = False
+            if self._writer:
+                self._writer.close()
+            raise
 
     async def disconnect(self) -> None:
         """Cleanly disconnect from the IMAP server."""
@@ -126,10 +130,10 @@ class ImapService:
     def is_connected(self) -> bool:
         return self._connected
 
-    async def _ensure_connected(self) -> None:
-        """Auto-reconnect if needed, with NOOP keepalive probe."""
+    async def _ensure_connected_unlocked(self) -> None:
+        """Auto-reconnect if needed, with NOOP keepalive probe (no lock)."""
         if not self._connected:
-            await self.connect()
+            await self._connect_unlocked()
             return
 
         now = asyncio.get_event_loop().time()
@@ -143,26 +147,27 @@ class ImapService:
                     self._writer.close()
                 self._writer = None
                 self._reader = None
-                await self.connect()
+                await self._connect_unlocked()
 
     async def _with_reconnect(self, coro_fn: Any) -> Any:
-        """Wrapper that retries once on transient connection errors."""
-        try:
-            await self._ensure_connected()
-            return await coro_fn()
-        except (ConnectionError, TimeoutError, OSError, RuntimeError) as e:
-            err_msg = str(e).lower()
-            transient = any(k in err_msg for k in ["socket", "timeout", "reset", "broken pipe", "not connected"])
-            if transient:
-                logger.warning("Transient IMAP error, reconnecting: %s", e)
-                self._connected = False
-                if self._writer:
-                    self._writer.close()
-                self._writer = None
-                self._reader = None
-                await self.connect()
+        """Wrapper that serializes IMAP operations and retries on transient errors."""
+        async with self._lock:
+            try:
+                await self._ensure_connected_unlocked()
                 return await coro_fn()
-            raise
+            except (ConnectionError, TimeoutError, OSError, RuntimeError) as e:
+                err_msg = str(e).lower()
+                transient = any(k in err_msg for k in ["socket", "timeout", "reset", "broken pipe", "not connected"])
+                if transient:
+                    logger.warning("Transient IMAP error, reconnecting: %s", e)
+                    self._connected = False
+                    if self._writer:
+                        self._writer.close()
+                    self._writer = None
+                    self._reader = None
+                    await self._connect_unlocked()
+                    return await coro_fn()
+                raise
 
     async def _select_folder(self, folder: str) -> None:
         await self._send(f'SELECT "{folder}"', timeout=LIGHT_TIMEOUT)
