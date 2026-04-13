@@ -12,6 +12,7 @@ import logging
 import sys
 from typing import Any
 
+import httpx
 from mcp.server.fastmcp import FastMCP
 
 from garza_mcp.config import (
@@ -974,7 +975,12 @@ async def nc_trash_empty() -> str:
 @mcp.tool()
 async def nc_deck_list_boards() -> str:
     """List Nextcloud Deck boards."""
-    return _json(await _nc().deck_list_boards())
+    try:
+        return _json(await _nc().deck_list_boards())
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return _json({"error": "Deck app not installed on this Nextcloud instance"})
+        raise
 
 @mcp.tool()
 async def nc_deck_get_board(boardId: int) -> str:
@@ -1226,8 +1232,8 @@ async def nc_search_providers() -> str:
     return _json(await _nc().search_providers())
 
 @mcp.tool()
-async def nc_search(providerId: str, query: str, limit: int | None = None) -> str:
-    """Unified search across Nextcloud."""
+async def nc_search(query: str, providerId: str = "files", limit: int | None = None) -> str:
+    """Unified search across Nextcloud. Use nc_search_providers to see available providers (e.g. 'files', 'fulltextsearch')."""
     return _json(await _nc().unified_search(providerId, query, limit))
 
 

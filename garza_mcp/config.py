@@ -59,10 +59,10 @@ DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 # ── Timeouts (seconds) ───────────────────────────────────────────────────────
 TOOL_TIMEOUTS: dict[str, int] = {
     # IMAP — tiered
-    "mail_list": 90,
-    "mail_search": 120,
-    "mail_folders": 90,
-    "mail_stats": 60,
+    "mail_list": 180,
+    "mail_search": 180,
+    "mail_folders": 180,
+    "mail_stats": 180,
     "mail_read": 45,
     "mail_status": 30,
     # SMTP

@@ -74,9 +74,9 @@ class BeeperDbService:
 
     async def get_db_stats(self) -> dict[str, Any]:
         """Fast scalar queries for DB stats."""
-        total = await self._query("SELECT MAX(ROWID) FROM message;")
-        count = await self._query("SELECT COUNT(*) FROM message;")
-        threads = await self._query("SELECT COUNT(DISTINCT chat_guid) FROM message;")
+        total = await self._query("SELECT MAX(ROWID) FROM messages;")
+        count = await self._query("SELECT COUNT(*) FROM messages;")
+        threads = await self._query("SELECT COUNT(*) FROM threads;")
         return {"totalMessages": total, "messageCount": count, "threadCount": threads}
 
     async def search_messages(self, query: str, limit: int = 20, chat_id: str | None = None) -> list[dict[str, Any]]:
@@ -84,13 +84,14 @@ class BeeperDbService:
         where = ""
         if chat_id:
             safe_id = chat_id.replace("'", "''")
-            where = f"AND m.chat_guid = '{safe_id}'"
+            where = f"AND m.roomID = '{safe_id}'"
+        safe_query = query.replace("'", "''")
         sql = f"""
-            SELECT m.ROWID as id, m.chat_guid, m.sender, m.text,
-                   datetime(m.timestamp/1000, 'unixepoch') as date
-            FROM message m
-            JOIN message_fts f ON f.ROWID = m.ROWID
-            WHERE message_fts MATCH '{query.replace("'", "''")}'
+            SELECT m.id, m.roomID as chat_id, m.senderContactID as sender,
+                   m.type, datetime(m.timestamp/1000, 'unixepoch') as date
+            FROM mx_room_messages m
+            JOIN mx_room_messages_fts f ON f.ROWID = m.id
+            WHERE mx_room_messages_fts MATCH '{safe_query}'
             {where}
             ORDER BY m.timestamp DESC
             LIMIT {limit};
@@ -102,11 +103,12 @@ class BeeperDbService:
         where_before = ""
         if before:
             where_before = f"AND m.timestamp < {int(before)}"
+        safe_id = chat_id.replace("'", "''")
         sql = f"""
-            SELECT m.ROWID as id, m.sender, m.text,
+            SELECT m.id, m.senderContactID as sender, m.type,
                    datetime(m.timestamp/1000, 'unixepoch') as date
-            FROM message m
-            WHERE m.chat_guid = '{chat_id.replace("'", "''")}'
+            FROM mx_room_messages m
+            WHERE m.roomID = '{safe_id}'
             {where_before}
             ORDER BY m.timestamp DESC
             LIMIT {limit};
@@ -114,49 +116,58 @@ class BeeperDbService:
         return await self._query_json(sql)
 
     async def list_threads(self, limit: int = 50, account_id: str | None = None) -> list[dict[str, Any]]:
-        """List chat threads (avoids expensive subqueries)."""
+        """List chat threads from the threads table."""
         where = ""
         if account_id:
             safe_id = account_id.replace("'", "''")
-            where = f"WHERE chat_guid LIKE '{safe_id}%'"
+            where = f"WHERE accountID = '{safe_id}'"
         sql = f"""
-            SELECT chat_guid, COUNT(*) as message_count,
-                   MAX(datetime(timestamp/1000, 'unixepoch')) as last_message
-            FROM message
+            SELECT threadID, accountID,
+                   json_extract(thread, '$.title') as title,
+                   json_extract(thread, '$.type') as type,
+                   json_extract(thread, '$.isUnread') as isUnread,
+                   json_extract(thread, '$.unreadCount') as unreadCount,
+                   datetime(timestamp/1000, 'unixepoch') as last_message
+            FROM threads
             {where}
-            GROUP BY chat_guid
-            ORDER BY MAX(timestamp) DESC
+            ORDER BY timestamp DESC
             LIMIT {limit};
         """
         return await self._query_json(sql)
 
     async def get_participants(self, chat_id: str) -> list[dict[str, Any]]:
+        safe_id = chat_id.replace("'", "''")
         sql = f"""
-            SELECT DISTINCT sender, COUNT(*) as message_count
-            FROM message
-            WHERE chat_guid = '{chat_id.replace("'", "''")}'
-            GROUP BY sender
+            SELECT DISTINCT senderContactID as sender, COUNT(*) as message_count
+            FROM mx_room_messages
+            WHERE roomID = '{safe_id}'
+            GROUP BY senderContactID
             ORDER BY message_count DESC;
         """
         return await self._query_json(sql)
 
     async def search_contacts(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        safe_query = query.replace("'", "''")
         sql = f"""
-            SELECT DISTINCT sender, COUNT(*) as message_count
-            FROM message
-            WHERE sender LIKE '%{query.replace("'", "''")}%'
-            GROUP BY sender
+            SELECT DISTINCT senderContactID as sender, COUNT(*) as message_count
+            FROM mx_room_messages
+            WHERE senderContactID LIKE '%{safe_query}%'
+            GROUP BY senderContactID
             ORDER BY message_count DESC
             LIMIT {limit};
         """
         return await self._query_json(sql)
 
     async def get_reactions(self, chat_id: str, event_id: str) -> list[dict[str, Any]]:
+        safe_chat = chat_id.replace("'", "''")
+        safe_event = event_id.replace("'", "''")
         sql = f"""
-            SELECT * FROM reaction
-            WHERE chat_guid = '{chat_id.replace("'", "''")}'
-            AND rel_event_id = '{event_id.replace("'", "''")}'
-            ORDER BY timestamp DESC;
+            SELECT r.senderContactID as sender, r.key as reaction,
+                   datetime(r.timestamp/1000, 'unixepoch') as date
+            FROM mx_reactions r
+            WHERE r.roomID = '{safe_chat}'
+            AND r.eventID = '{safe_event}'
+            ORDER BY r.timestamp DESC;
         """
         return await self._query_json(sql)
 
@@ -164,12 +175,12 @@ class BeeperDbService:
         where = ""
         if chat_id:
             safe_id = chat_id.replace("'", "''")
-            where = f"AND chat_guid = '{safe_id}'"
+            where = f"AND roomID = '{safe_id}'"
         sql = f"""
             SELECT date(timestamp/1000, 'unixepoch') as day,
                    COUNT(*) as messages,
-                   COUNT(DISTINCT sender) as unique_senders
-            FROM message
+                   COUNT(DISTINCT senderContactID) as unique_senders
+            FROM mx_room_messages
             WHERE timestamp > (strftime('%s', 'now', '-{days} days') * 1000)
             {where}
             GROUP BY day

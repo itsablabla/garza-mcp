@@ -43,21 +43,22 @@ class VoicenotesService:
         return resp.json() if resp.content else {}
 
     async def get_user_info(self) -> Any:
-        return await self._request("GET", "/api/integrations/obsidian-sync/user")
+        return await self._request("GET", "/api/integrations/obsidian-sync/user/info")
 
     async def list_recordings(self, since: str | None = None) -> Any:
-        params: dict[str, str] = {}
-        if since:
-            params["since"] = since
-        return await self._request("GET", "/api/integrations/obsidian-sync/recordings", params=params)
+        body: dict[str, Any] = {
+            "obsidian_deleted_recording_ids": [],
+            "last_synced_note_updated_at": since,
+        }
+        return await self._request("POST", "/api/integrations/obsidian-sync/recordings", json=body)
 
     async def get_next_page(self, url: str) -> Any:
-        resp = await self._client.get(url)
+        resp = await self._client.post(url, json={})
         resp.raise_for_status()
         return resp.json()
 
     async def get_recording_audio_url(self, recording_id: str) -> Any:
-        return await self._request("GET", f"/api/integrations/obsidian-sync/recordings/{recording_id}/audio")
+        return await self._request("GET", f"/api/integrations/obsidian-sync/recordings/{recording_id}/signed-url")
 
     async def delete_recording(self, recording_id: str) -> Any:
         return await self._request("DELETE", f"/api/integrations/obsidian-sync/recordings/{recording_id}")
