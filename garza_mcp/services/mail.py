@@ -414,21 +414,25 @@ class ImapService:
 
         return await self._with_reconnect(_do)
 
+    async def _list_folders_unlocked(self) -> list[dict[str, str]]:
+        """Internal folder listing without lock — for use within _with_reconnect."""
+        lines = await self._send('LIST "" "*"', timeout=HEAVY_TIMEOUT)
+        import re
+
+        folders: list[dict[str, str]] = []
+        for line in lines:
+            m = re.search(r'"([^"]*)"$', line)
+            if m:
+                folders.append({"path": m.group(1)})
+            elif line.startswith("* LIST"):
+                parts = line.split()
+                if parts:
+                    folders.append({"path": parts[-1].strip('"')})
+        return folders
+
     async def get_folders(self) -> list[dict[str, str]]:
         async def _do() -> list[dict[str, str]]:
-            lines = await self._send('LIST "" "*"', timeout=HEAVY_TIMEOUT)
-            import re
-
-            folders: list[dict[str, str]] = []
-            for line in lines:
-                m = re.search(r'"([^"]*)"$', line)
-                if m:
-                    folders.append({"path": m.group(1)})
-                elif line.startswith("* LIST"):
-                    parts = line.split()
-                    if parts:
-                        folders.append({"path": parts[-1].strip('"')})
-            return folders
+            return await self._list_folders_unlocked()
 
         return await self._with_reconnect(_do)
 
@@ -467,8 +471,8 @@ class ImapService:
 
     async def get_stats(self) -> dict[str, Any]:
         async def _do() -> dict[str, Any]:
-            # Get folder list
-            folders = await self.get_folders()
+            # Get folder list (unlocked — we're already inside _with_reconnect)
+            folders = await self._list_folders_unlocked()
 
             # Get INBOX stats
             await self._select_folder("INBOX")

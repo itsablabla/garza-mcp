@@ -107,7 +107,7 @@ class DriveService:
         """Write content to a file."""
         target = self._resolve(path)
         # Use printf to handle special characters
-        escaped = content.replace("\\", "\\\\").replace("'", "'\\''")
+        escaped = content.replace("'", "'\\''")
         await self._run(f"printf '%s' '{escaped}' > {shlex.quote(target)}")
         return {"path": path, "status": "written"}
 
