@@ -190,7 +190,7 @@ async def mail_star(emailId: str, isStarred: bool = True, folder: str = "INBOX")
 
 @mcp.tool()
 async def mail_move(emailId: str, targetFolder: str, folder: str = "INBOX") -> str:
-    """Move an email to another folder."""
+    """Move an email to another folder. targetFolder is the destination (alias: destination)."""
     async def _do() -> str:
         await imap.move_email(emailId, targetFolder, folder)
         return _ok(f"Email {emailId} moved to {targetFolder}.")
@@ -643,11 +643,11 @@ async def quo_send_message(from_number: str, to: str, content: str) -> str:
     return _json(await quo.send_message(from_number, to, content))
 
 @mcp.tool()
-async def quo_list_messages(phoneNumberId: str, participants: list[str], maxResults: int | None = None) -> str:
-    """List messages for a phone number."""
+async def quo_list_messages(phoneNumberId: str, participants: list[str] | None = None, maxResults: int | None = None) -> str:
+    """List messages for a phone number. Participants is optional list of phone numbers to filter by."""
     if not quo:
         return _err("Quo not configured")
-    return _json(await quo.list_messages(phoneNumberId, participants, maxResults))
+    return _json(await quo.list_messages(phoneNumberId, participants or [], maxResults))
 
 @mcp.tool()
 async def quo_get_message(messageId: str) -> str:
@@ -657,11 +657,11 @@ async def quo_get_message(messageId: str) -> str:
     return _json(await quo.get_message(messageId))
 
 @mcp.tool()
-async def quo_list_calls(phoneNumberId: str, participants: list[str], maxResults: int | None = None) -> str:
-    """List calls for a phone number."""
+async def quo_list_calls(phoneNumberId: str, participants: list[str] | None = None, maxResults: int | None = None) -> str:
+    """List calls for a phone number. Participants is optional list of phone numbers to filter by."""
     if not quo:
         return _err("Quo not configured")
-    return _json(await quo.list_calls(phoneNumberId, participants, maxResults))
+    return _json(await quo.list_calls(phoneNumberId, participants or [], maxResults))
 
 @mcp.tool()
 async def quo_get_call(callId: str) -> str:

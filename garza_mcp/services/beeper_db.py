@@ -77,7 +77,13 @@ class BeeperDbService:
         total = await self._query("SELECT MAX(ROWID) FROM messages;")
         count = await self._query("SELECT COUNT(*) FROM messages;")
         threads = await self._query("SELECT COUNT(*) FROM threads;")
-        return {"totalMessages": total, "messageCount": count, "threadCount": threads}
+        # Ensure integer values — _query returns strings for scalar results
+        def _to_int(val: Any) -> int:
+            try:
+                return int(str(val).strip()) if val else 0
+            except (ValueError, TypeError):
+                return 0
+        return {"totalMessages": _to_int(total), "messageCount": _to_int(count), "threadCount": _to_int(threads)}
 
     async def search_messages(self, query: str, limit: int = 20, chat_id: str | None = None) -> list[dict[str, Any]]:
         """FTS5 full-text search across messages."""

@@ -63,10 +63,19 @@ class FabricService:
         return await self._request("POST", "/v2/search", json={"query": "*", "limit": 50})
 
     async def get_notepad(self, notepad_id: str) -> Any:
-        return await self._request("GET", f"/v2/notepads/{notepad_id}")
+        # Fabric API uses /v2/resources/{id} for individual resource access
+        return await self._request("GET", f"/v2/resources/{notepad_id}")
 
     async def update_notepad(self, notepad_id: str, text: str) -> Any:
-        return await self._request("PATCH", f"/v2/notepads/{notepad_id}", json={"text": text})
+        # PATCH /v2/resources/{id} returns 204 No Content on success
+        resp = await self._client.request("PATCH", f"/v2/resources/{notepad_id}", json={"text": text})
+        resp.raise_for_status()
+        if resp.content:
+            return resp.json()
+        return {"status": "updated", "id": notepad_id}
 
     async def delete_notepad(self, notepad_id: str) -> Any:
-        return await self._request("DELETE", f"/v2/notepads/{notepad_id}")
+        # Fabric API doesn't support DELETE on individual resources — use PATCH to trash
+        resp = await self._client.request("PATCH", f"/v2/resources/{notepad_id}", json={"trashed": True})
+        resp.raise_for_status()
+        return {"status": "trashed", "id": notepad_id}
