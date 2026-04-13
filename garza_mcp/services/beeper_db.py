@@ -30,7 +30,7 @@ class BeeperDbService:
             sql_file = f.name
 
         try:
-            cmd = f'sqlite3 -header -separator "|" "{self.db_path}" < "{sql_file}"'
+            cmd = f'sqlite3 -separator "|" "{self.db_path}" < "{sql_file}"'
             proc = await asyncio.create_subprocess_shell(
                 cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
