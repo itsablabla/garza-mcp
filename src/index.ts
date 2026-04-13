@@ -1362,12 +1362,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return ok(JSON.stringify(data, null, 2));
         }
         case 'fabric_recall_memories': {
+          if (!a.query) return err('query is required');
           const data = await fabric.recallMemories(a.query, a.limit || 20);
           return ok(JSON.stringify(data, null, 2));
         }
         case 'fabric_create_note': {
           if (!a.text) return err('text is required');
-          const data = await fabric.createNotepad(a.text, a.parentId);
+          const data = await fabric.createNotepad(a.text, undefined, a.parentId);
           return ok(JSON.stringify(data, null, 2));
         }
         case 'fabric_list_notes': {
