@@ -42,8 +42,9 @@ class DriveService:
         if not path or path == "/":
             return self.base_path
         clean = os.path.normpath(path).lstrip("/")
-        full = os.path.join(self.base_path, clean)
-        if not full.startswith(self.base_path):
+        full = os.path.normpath(os.path.join(self.base_path, clean))
+        norm_base = os.path.normpath(self.base_path)
+        if full != norm_base and not full.startswith(norm_base + os.sep):
             raise ValueError(f"Path traversal detected: {path}")
         return full
 

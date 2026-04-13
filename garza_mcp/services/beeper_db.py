@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import tempfile
 from typing import Any
 
@@ -28,19 +29,22 @@ class BeeperDbService:
             f.write(sql)
             sql_file = f.name
 
-        cmd = f'sqlite3 -header -separator "|" "{self.db_path}" < "{sql_file}"'
-        proc = await asyncio.create_subprocess_shell(
-            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise TimeoutError(f"Query timed out after {self.timeout}s")
-        if proc.returncode != 0:
-            err_text = stderr.decode().strip() if stderr else "unknown error"
-            raise RuntimeError(f"sqlite3 error: {err_text}")
-        return stdout.decode().strip()
+            cmd = f'sqlite3 -header -separator "|" "{self.db_path}" < "{sql_file}"'
+            proc = await asyncio.create_subprocess_shell(
+                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                raise TimeoutError(f"Query timed out after {self.timeout}s")
+            if proc.returncode != 0:
+                err_text = stderr.decode().strip() if stderr else "unknown error"
+                raise RuntimeError(f"sqlite3 error: {err_text}")
+            return stdout.decode().strip()
+        finally:
+            os.unlink(sql_file)
 
     async def _query_json(self, sql: str) -> list[dict[str, Any]]:
         """Execute a SQL query via sqlite3 CLI and return parsed JSON rows."""
@@ -48,22 +52,25 @@ class BeeperDbService:
             f.write(f".mode json\n{sql}")
             sql_file = f.name
 
-        cmd = f'sqlite3 "{self.db_path}" < "{sql_file}"'
-        proc = await asyncio.create_subprocess_shell(
-            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise TimeoutError(f"Query timed out after {self.timeout}s")
-        if proc.returncode != 0:
-            err_text = stderr.decode().strip() if stderr else "unknown error"
-            raise RuntimeError(f"sqlite3 error: {err_text}")
-        text = stdout.decode().strip()
-        if not text:
-            return []
-        return json.loads(text)
+            cmd = f'sqlite3 "{self.db_path}" < "{sql_file}"'
+            proc = await asyncio.create_subprocess_shell(
+                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                raise TimeoutError(f"Query timed out after {self.timeout}s")
+            if proc.returncode != 0:
+                err_text = stderr.decode().strip() if stderr else "unknown error"
+                raise RuntimeError(f"sqlite3 error: {err_text}")
+            text = stdout.decode().strip()
+            if not text:
+                return []
+            return json.loads(text)
+        finally:
+            os.unlink(sql_file)
 
     async def get_db_stats(self) -> dict[str, Any]:
         """Fast scalar queries for DB stats."""

@@ -1408,7 +1408,7 @@ def _create_app():
             return
 
         token = auth_header[7:]
-        if token != AUTH_TOKEN:
+        if not AUTH_TOKEN or token != AUTH_TOKEN:
             response = JSONResponse(
                 status_code=403,
                 content={"error": "Invalid authentication token"},
