@@ -414,27 +414,39 @@ async def icloud_stats() -> str:
 
 _BEEPER_OFFLINE = _json({"error": "Beeper Desktop is not running on the server", "hint": "Start Beeper Desktop on the Mac Mini (requires GUI login)"})
 
-async def _beeper_call(coro: Any) -> str:
-    """Wrap Beeper API calls with health check for offline Desktop app."""
+async def _beeper_call(coro: Any, *, is_discovery: bool = False) -> str:
+    """Wrap Beeper API calls with health check for offline Desktop app.
+
+    Args:
+        is_discovery: True for listing/search endpoints that don't reference
+            specific resource IDs.  Only these treat HTTP 404 as "offline".
+            Resource-specific endpoints (get_chat, send_message, etc.) let
+            404 propagate so callers see "not found" instead of a misleading
+            "Desktop not running" message.
+    """
     try:
         return _json(await coro)
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
         return _BEEPER_OFFLINE
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404 and is_discovery:
+            return _BEEPER_OFFLINE
+        raise
 
 @mcp.tool()
 async def beeper_list_accounts() -> str:
     """List Beeper messaging accounts."""
-    return await _beeper_call(beeper_api.list_accounts())
+    return await _beeper_call(beeper_api.list_accounts(), is_discovery=True)
 
 @mcp.tool()
 async def beeper_list_chats(limit: int | None = None, offset: int | None = None, unreadOnly: bool = False, service: str | None = None) -> str:
     """List Beeper chats."""
-    return await _beeper_call(beeper_api.list_chats(limit=limit, offset=offset, unread_only=unreadOnly, service=service))
+    return await _beeper_call(beeper_api.list_chats(limit=limit, offset=offset, unread_only=unreadOnly, service=service), is_discovery=True)
 
 @mcp.tool()
 async def beeper_search_chats(query: str) -> str:
     """Search Beeper chats."""
-    return await _beeper_call(beeper_api.search_chats(query))
+    return await _beeper_call(beeper_api.search_chats(query), is_discovery=True)
 
 @mcp.tool()
 async def beeper_get_chat(chatID: str) -> str:
@@ -449,7 +461,7 @@ async def beeper_get_messages(chatID: str, limit: int | None = None, before: str
 @mcp.tool()
 async def beeper_search_messages(query: str, limit: int | None = None) -> str:
     """Search Beeper messages."""
-    return await _beeper_call(beeper_api.search_messages(query, limit=limit))
+    return await _beeper_call(beeper_api.search_messages(query, limit=limit), is_discovery=True)
 
 @mcp.tool()
 async def beeper_send_message(chatID: str, text: str, replyTo: str | None = None) -> str:
@@ -469,7 +481,7 @@ async def beeper_add_reaction(chatID: str, messageID: str, emoji: str) -> str:
 @mcp.tool()
 async def beeper_create_chat(accountID: str, participantIDs: list[str], type: str = "single") -> str:
     """Create a new Beeper chat."""
-    return await _beeper_call(beeper_api.create_chat(accountID, participantIDs, chat_type=type))
+    return await _beeper_call(beeper_api.create_chat(accountID, participantIDs, chat_type=type), is_discovery=True)
 
 @mcp.tool()
 async def beeper_archive_chat(chatID: str, archived: bool) -> str:
@@ -645,11 +657,11 @@ async def quo_send_message(from_number: str, to: str, content: str) -> str:
     return _json(await quo.send_message(from_number, to, content))
 
 @mcp.tool()
-async def quo_list_messages(phoneNumberId: str, participants: list[str] | None = None, maxResults: int | None = None) -> str:
-    """List messages for a phone number. Participants is optional list of phone numbers to filter by."""
+async def quo_list_messages(phoneNumberId: str, participants: list[str], maxResults: int = 10) -> str:
+    """List messages for a phone number. Requires participants (E.164 phone numbers) to filter conversation."""
     if not quo:
         return _err("Quo not configured")
-    return _json(await quo.list_messages(phoneNumberId, participants or [], maxResults))
+    return _json(await quo.list_messages(phoneNumberId, participants, maxResults))
 
 @mcp.tool()
 async def quo_get_message(messageId: str) -> str:
@@ -659,11 +671,11 @@ async def quo_get_message(messageId: str) -> str:
     return _json(await quo.get_message(messageId))
 
 @mcp.tool()
-async def quo_list_calls(phoneNumberId: str, participants: list[str] | None = None, maxResults: int | None = None) -> str:
-    """List calls for a phone number. Participants is optional list of phone numbers to filter by."""
+async def quo_list_calls(phoneNumberId: str, participants: list[str], maxResults: int = 10) -> str:
+    """List calls for a phone number. Requires participants (E.164 phone numbers) to filter conversation."""
     if not quo:
         return _err("Quo not configured")
-    return _json(await quo.list_calls(phoneNumberId, participants or [], maxResults))
+    return _json(await quo.list_calls(phoneNumberId, participants, maxResults))
 
 @mcp.tool()
 async def quo_get_call(callId: str) -> str:
@@ -1006,19 +1018,27 @@ async def nc_trash_empty() -> str:
 
 _DECK_NOT_INSTALLED = _json({"error": "Deck app not installed on this Nextcloud instance", "hint": "Install via: occ app:install deck"})
 
-async def _deck_call(coro: Any, is_app_check: bool = False) -> str:
-    """Wrap Deck API calls. Only treat 404 as 'not installed' for listing endpoints."""
+async def _deck_call(coro: Any, *, is_discovery: bool = False) -> str:
+    """Wrap Deck API calls.
+
+    Args:
+        is_discovery: True for listing/creation endpoints that don't reference
+            specific resource IDs.  Only these treat HTTP 404 as "app not
+            installed".  Resource-specific endpoints (get_board, delete_card,
+            etc.) let 404 propagate so callers see "not found" instead of a
+            misleading "app not installed" message.
+    """
     try:
         return _json(await coro)
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404 and is_app_check:
+        if e.response.status_code == 404 and is_discovery:
             return _DECK_NOT_INSTALLED
         raise
 
 @mcp.tool()
 async def nc_deck_list_boards() -> str:
     """List Nextcloud Deck boards."""
-    return await _deck_call(_nc().deck_list_boards(), is_app_check=True)
+    return await _deck_call(_nc().deck_list_boards(), is_discovery=True)
 
 @mcp.tool()
 async def nc_deck_get_board(boardId: int) -> str:
@@ -1028,7 +1048,7 @@ async def nc_deck_get_board(boardId: int) -> str:
 @mcp.tool()
 async def nc_deck_create_board(title: str, color: str | None = None) -> str:
     """Create a Nextcloud Deck board."""
-    return await _deck_call(_nc().deck_create_board(title, color))
+    return await _deck_call(_nc().deck_create_board(title, color), is_discovery=True)
 
 @mcp.tool()
 async def nc_deck_delete_board(boardId: int) -> str:
@@ -1038,7 +1058,7 @@ async def nc_deck_delete_board(boardId: int) -> str:
 @mcp.tool()
 async def nc_deck_list_stacks(boardId: int) -> str:
     """List stacks in a Nextcloud Deck board."""
-    return await _deck_call(_nc().deck_list_stacks(boardId), is_app_check=True)
+    return await _deck_call(_nc().deck_list_stacks(boardId), is_discovery=True)
 
 @mcp.tool()
 async def nc_deck_create_stack(boardId: int, title: str, order: int | None = None) -> str:

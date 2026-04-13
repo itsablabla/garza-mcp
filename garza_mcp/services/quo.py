@@ -44,34 +44,22 @@ class QuoService:
     async def send_message(self, from_number: str, to: str, content: str) -> Any:
         return await self._request("POST", "/messages", json={"from": from_number, "to": [to], "content": content})
 
-    async def list_messages(self, phone_number_id: str, participants: list[str], max_results: int | None = None) -> Any:
+    async def list_messages(self, phone_number_id: str, participants: list[str], max_results: int = 10) -> Any:
         params: list[tuple[str, str]] = [("phoneNumberId", phone_number_id)]
-        if not participants:
-            # OpenPhone API rejects empty participants — use phoneNumberId only
-            if max_results:
-                params.append(("maxResults", str(max_results)))
-            return await self._request("GET", "/messages", params=params)
         for p in participants:
             params.append(("participants[]", p))
-        if max_results:
-            params.append(("maxResults", str(max_results)))
+        params.append(("maxResults", str(max_results)))
         return await self._request("GET", "/messages", params=params)
 
     async def get_message(self, message_id: str) -> Any:
         return await self._request("GET", f"/messages/{message_id}")
 
     # ── Calls ─────────────────────────────────────────────────────────────
-    async def list_calls(self, phone_number_id: str, participants: list[str], max_results: int | None = None) -> Any:
+    async def list_calls(self, phone_number_id: str, participants: list[str], max_results: int = 10) -> Any:
         params: list[tuple[str, str]] = [("phoneNumberId", phone_number_id)]
-        if not participants:
-            # OpenPhone API rejects empty participants — use phoneNumberId only
-            if max_results:
-                params.append(("maxResults", str(max_results)))
-            return await self._request("GET", "/calls", params=params)
         for p in participants:
             params.append(("participants[]", p))
-        if max_results:
-            params.append(("maxResults", str(max_results)))
+        params.append(("maxResults", str(max_results)))
         return await self._request("GET", "/calls", params=params)
 
     async def get_call(self, call_id: str) -> Any:
