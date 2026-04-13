@@ -49,17 +49,43 @@ export class DriveService {
   async listFiles(dirPath: string = '/'): Promise<DriveItem[]> {
     const fullPath = this.resolvePath(dirPath);
 
-    // Use ls -1Ap via shell (no -L to avoid symlink following on FUSE mounts)
-    const output = await shAsync(`ls -1Ap "${fullPath}" 2>/dev/null`);
+    // On macOS CloudStorage/FUSE mounts, ls can hang because it stats every entry.
+    // Use a shell one-liner that lists entries and checks type without heavy stat calls.
+    let output: string;
+    try {
+      // List entries with type prefix: "d name" or "f name"
+      output = await shAsync(`for f in "${fullPath}"/*; do [ -e "$f" ] || continue; n=$(basename "$f"); case "$n" in .*) continue;; esac; [ -d "$f" ] && echo "d $n" || echo "f $n"; done 2>/dev/null | head -500`, 15000);
+    } catch {
+      // Fallback to ls
+      try {
+        output = await shAsync(`ls -1Ap "${fullPath}" 2>/dev/null`, 15000);
+      } catch {
+        return [];
+      }
+      if (!output) return [];
+
+      const lines = output.split('\n').filter(Boolean);
+      const items: DriveItem[] = [];
+      for (const line of lines) {
+        const name = line.endsWith('/') ? line.slice(0, -1) : line;
+        if (name.startsWith('.')) continue;
+        const isDir = line.endsWith('/');
+        const entryPath = path.join(fullPath, name);
+        items.push({ name, path: path.relative(this.basePath, entryPath), type: isDir ? 'directory' : 'file', size: 0, modified: '', created: '' });
+      }
+      return items.sort((a, b) => { if (a.type !== b.type) return a.type === 'directory' ? -1 : 1; return a.name.localeCompare(b.name); });
+    }
     if (!output) return [];
 
     const lines = output.split('\n').filter(Boolean);
     const items: DriveItem[] = [];
 
     for (const line of lines) {
-      const name = line.endsWith('/') ? line.slice(0, -1) : line;
-      if (name.startsWith('.')) continue;
-      const isDir = line.endsWith('/');
+      // Format: "d name" or "f name"
+      const typeChar = line.charAt(0);
+      const name = line.substring(2);
+      if (!name || name.startsWith('.')) continue;
+      const isDir = typeChar === 'd';
       const entryPath = path.join(fullPath, name);
 
       items.push({
