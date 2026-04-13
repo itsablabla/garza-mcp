@@ -51,6 +51,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Check if an error is a transient connection failure (not a search-capability error). */
+function isTransientError(err: any): boolean {
+  const msg = err?.message || '';
+  return /closed|reset|timeout|ECONNR|socket|not connected/i.test(msg);
+}
+
 // ── Service ─────────────────────────────────────────────────────────────────
 
 export class IMAPService {
@@ -160,9 +166,7 @@ export class IMAPService {
       return await fn();
     } catch (e: any) {
       const msg = e?.message || '';
-      const isTransient =
-        /closed|reset|timeout|ECONNR|socket|not connected/i.test(msg);
-      if (isTransient) {
+      if (isTransientError(e)) {
         logger.warn(
           `IMAP ${label} failed (${msg.slice(0, 80)}), reconnecting...`,
           'IMAPService',
@@ -276,6 +280,8 @@ export class IMAPService {
           );
           uids = searchResult as number[];
         } catch (searchErr: any) {
+          // Re-throw transient connection errors so withReconnect can handle them
+          if (isTransientError(searchErr)) throw searchErr;
           // Fallback: Proton Bridge may not support OR — try subject-only
           logger.warn(
             `OR search failed (${(searchErr.message || '').slice(0, 60)}), falling back to subject-only`,
@@ -287,8 +293,10 @@ export class IMAPService {
               SEARCH_TIMEOUT, 'imap-search-subject'
             );
             uids = subjectResult as number[];
-          } catch {
-            // If even subject search fails, return empty
+          } catch (subjectErr: any) {
+            // Re-throw transient connection errors so withReconnect can handle them
+            if (isTransientError(subjectErr)) throw subjectErr;
+            // If even subject search fails for non-transient reasons, return empty
             logger.warn('Subject-only search also failed, returning empty results', 'IMAPService');
             return [];
           }
