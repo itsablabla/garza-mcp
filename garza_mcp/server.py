@@ -748,7 +748,7 @@ async def quo_update_contact(contactId: str, firstName: str | None = None, lastN
         fields["company"] = company
     if role:
         fields["role"] = role
-    return _json(await quo.update_contact(contactId, fields))
+    return _json(await quo.update_contact(contactId, {"defaultFields": fields}))
 
 @mcp.tool()
 async def quo_delete_contact(contactId: str) -> str:

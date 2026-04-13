@@ -112,7 +112,10 @@ class ImapService:
             self._writer.write(f"{tag} STARTTLS\r\n".encode())
             await self._writer.drain()
             starttls_resp = await asyncio.wait_for(self._reader.readline(), timeout=CONNECT_TIMEOUT)
-            logger.debug("STARTTLS response: %s", starttls_resp.decode().strip())
+            starttls_line = starttls_resp.decode().strip()
+            logger.debug("STARTTLS response: %s", starttls_line)
+            if "NO" in starttls_line or "BAD" in starttls_line:
+                raise RuntimeError(f"STARTTLS failed: {starttls_line}")
             # Upgrade the transport to TLS
             transport = self._writer.transport
             protocol = transport.get_protocol()

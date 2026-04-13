@@ -48,8 +48,9 @@ class VoicenotesService:
     async def list_recordings(self, since: str | None = None) -> Any:
         body: dict[str, Any] = {
             "obsidian_deleted_recording_ids": [],
-            "last_synced_note_updated_at": since,
         }
+        if since:
+            body["last_synced_note_updated_at"] = since
         return await self._request("POST", "/api/integrations/obsidian-sync/recordings", json=body)
 
     async def get_next_page(self, url: str) -> Any:
