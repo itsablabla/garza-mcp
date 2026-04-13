@@ -536,7 +536,9 @@ async def beeper_db_history(chatID: str, limit: int = 50, before: str | None = N
 @mcp.tool()
 async def beeper_db_threads(limit: int = 50, accountID: str | None = None) -> str:
     """List chat threads from the Beeper database."""
-    return _json(await beeper_db.list_threads(limit, accountID))
+    async def _do() -> str:
+        return _json(await beeper_db.list_threads(limit, accountID))
+    return await _with_timeout("beeper_db_threads", _do())
 
 @mcp.tool()
 async def beeper_db_participants(chatID: str) -> str:
@@ -784,7 +786,9 @@ async def voicenotes_list(since: str | None = None) -> str:
     """List Voicenotes recordings."""
     if not voicenotes:
         return _err("Voicenotes not configured")
-    return _json(await voicenotes.list_recordings(since))
+    async def _do() -> str:
+        return _json(await voicenotes.list_recordings(since))
+    return await _with_timeout("voicenotes_list", _do())
 
 @mcp.tool()
 async def voicenotes_search(query: str, limit: int = 20) -> str:
@@ -817,32 +821,44 @@ def _nc() -> NextcloudService:
 @mcp.tool()
 async def nc_notes_list(category: str | None = None) -> str:
     """List Nextcloud notes."""
-    return _json(await _nc().notes_list(category))
+    async def _do() -> str:
+        return _json(await _nc().notes_list(category))
+    return await _with_timeout("nc_notes_list", _do())
 
 @mcp.tool()
 async def nc_notes_get(noteId: int) -> str:
     """Get a Nextcloud note by ID."""
-    return _json(await _nc().notes_get(noteId))
+    async def _do() -> str:
+        return _json(await _nc().notes_get(noteId))
+    return await _with_timeout("nc_notes_get", _do())
 
 @mcp.tool()
 async def nc_notes_create(title: str, content: str, category: str | None = None) -> str:
     """Create a Nextcloud note."""
-    return _json(await _nc().notes_create(title, content, category))
+    async def _do() -> str:
+        return _json(await _nc().notes_create(title, content, category))
+    return await _with_timeout("nc_notes_create", _do())
 
 @mcp.tool()
 async def nc_notes_update(noteId: int, title: str | None = None, content: str | None = None, category: str | None = None) -> str:
     """Update a Nextcloud note."""
-    return _json(await _nc().notes_update(noteId, title, content, category))
+    async def _do() -> str:
+        return _json(await _nc().notes_update(noteId, title, content, category))
+    return await _with_timeout("nc_notes_update", _do())
 
 @mcp.tool()
 async def nc_notes_delete(noteId: int) -> str:
     """Delete a Nextcloud note."""
-    return _json(await _nc().notes_delete(noteId))
+    async def _do() -> str:
+        return _json(await _nc().notes_delete(noteId))
+    return await _with_timeout("nc_notes_delete", _do())
 
 @mcp.tool()
 async def nc_notes_search(query: str) -> str:
     """Search Nextcloud notes."""
-    return _json(await _nc().notes_search(query))
+    async def _do() -> str:
+        return _json(await _nc().notes_search(query))
+    return await _with_timeout("nc_notes_search", _do())
 
 
 # ── Calendar (4) ──────────────────────────────────────────────────────────────

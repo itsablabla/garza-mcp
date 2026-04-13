@@ -670,7 +670,7 @@ class NextcloudService:
         # NC Tables API v2 expects data as list of {columnId, value} objects
         if isinstance(data, dict):
             # Convert {"columnId": value} dict to [{"columnId": id, "value": val}] list
-            row_data = [{"columnId": int(k), "value": str(v)} for k, v in data.items()]
+            row_data = [{"columnId": int(k), "value": v} for k, v in data.items()]
         else:
             row_data = data
         resp = await self._client.post(
@@ -684,7 +684,7 @@ class NextcloudService:
     async def tables_update_row(self, row_id: int, data: dict[str, Any] | list[dict[str, Any]]) -> Any:
         # NC Tables API v2 expects data as list of {columnId, value} objects
         if isinstance(data, dict):
-            row_data = [{"columnId": int(k), "value": str(v)} for k, v in data.items()]
+            row_data = [{"columnId": int(k), "value": v} for k, v in data.items()]
         else:
             row_data = data
         resp = await self._client.put(
