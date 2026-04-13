@@ -9,3 +9,13 @@ dist/
 .env.*
 *.log
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+.env

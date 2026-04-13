@@ -1,0 +1,32 @@
+[project]
+name = "garza-mcp"
+version = "7.0.0"
+description = "Garza MCP Server — Full Python FastMCP rewrite with native HTTP transport"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.9.0",
+    "httpx>=0.28.0",
+    "aioimaplib>=2.0.1",
+    "aiosmtplib>=3.0.0",
+    "uvicorn>=0.34.0",
+    "python-dotenv>=1.1.0",
+    "starlette>=0.46.0",
+]
+
+[project.scripts]
+garza-mcp = "garza_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
