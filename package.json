@@ -1,7 +1,7 @@
 {
   "name": "garza-mcp",
-  "version": "5.0.0",
-  "description": "Garza MCP — Unified MCP server: ProtonMail, Proton Drive, iCloud Drive, Beeper, Fabric AI",
+  "version": "6.0.0",
+  "description": "Garza MCP — Unified MCP server: ProtonMail, Proton Drive, iCloud Drive, Beeper, Fabric AI, Quo, Voicenotes, Nextcloud",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

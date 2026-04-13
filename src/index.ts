@@ -24,6 +24,7 @@ import { BeeperDbService } from './services/beeper-db-service.js';
 import { FabricService } from './services/fabric-service.js';
 import { QuoService } from './services/quo-service.js';
 import { VoicenotesService } from './services/voicenotes-service.js';
+import { NextcloudService } from './services/nextcloud-service.js';
 import { logger } from './utils/logger.js';
 import { parseEmails } from './utils/helpers.js';
 
@@ -43,6 +44,9 @@ const FABRIC_API_KEY = process.env.FABRIC_API_KEY || '';
 const FABRIC_API_URL = process.env.FABRIC_API_URL || 'https://api.fabric.so';
 const QUO_API_KEY = process.env.QUO_API_KEY || '';
 const VOICENOTES_TOKEN = process.env.VOICENOTES_TOKEN || '';
+const NEXTCLOUD_URL = process.env.NEXTCLOUD_URL || '';
+const NEXTCLOUD_USERNAME = process.env.NEXTCLOUD_USERNAME || '';
+const NEXTCLOUD_PASSWORD = process.env.NEXTCLOUD_PASSWORD || '';
 
 const DEBUG = process.env.DEBUG === 'true';
 
@@ -83,10 +87,11 @@ const beeperDb = new BeeperDbService(BEEPER_DB_PATH);
 const fabric = FABRIC_API_KEY ? new FabricService(FABRIC_API_KEY, FABRIC_API_URL) : null;
 const quo = QUO_API_KEY ? new QuoService(QUO_API_KEY) : null;
 const voicenotes = VOICENOTES_TOKEN ? new VoicenotesService(VOICENOTES_TOKEN) : null;
+const nextcloud = (NEXTCLOUD_URL && NEXTCLOUD_USERNAME && NEXTCLOUD_PASSWORD) ? new NextcloudService(NEXTCLOUD_URL, NEXTCLOUD_USERNAME, NEXTCLOUD_PASSWORD) : null;
 
 // ── MCP Server ───────────────────────────────────────────────────────────────
 const server = new Server(
-  { name: "garza-mcp", version: "5.0.0" },
+  { name: "garza-mcp", version: "6.0.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -879,6 +884,149 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     ] : []),
 
+    // ═══════════════════════════ NEXTCLOUD ═══════════════════════════
+    ...(nextcloud ? [
+      // ── Notes ──
+      { name: "nc_notes_list", description: "List all Nextcloud notes, optionally filtered by category", inputSchema: { type: "object" as const, properties: { category: { type: "string", description: "Filter by category (optional)" } } } },
+      { name: "nc_notes_get", description: "Get a specific Nextcloud note by ID", inputSchema: { type: "object" as const, properties: { noteId: { type: "number", description: "Note ID" } }, required: ["noteId"] } },
+      { name: "nc_notes_create", description: "Create a new Nextcloud note", inputSchema: { type: "object" as const, properties: { title: { type: "string", description: "Note title" }, content: { type: "string", description: "Note content (Markdown)" }, category: { type: "string", description: "Category (optional)" } }, required: ["title", "content"] } },
+      { name: "nc_notes_update", description: "Update an existing Nextcloud note", inputSchema: { type: "object" as const, properties: { noteId: { type: "number", description: "Note ID" }, title: { type: "string" }, content: { type: "string" }, category: { type: "string" } }, required: ["noteId"] } },
+      { name: "nc_notes_delete", description: "Delete a Nextcloud note", inputSchema: { type: "object" as const, properties: { noteId: { type: "number", description: "Note ID" } }, required: ["noteId"] } },
+      { name: "nc_notes_search", description: "Search Nextcloud notes by keyword (searches title, content, category)", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Search keyword" } }, required: ["query"] } },
+
+      // ── Calendar ──
+      { name: "nc_calendar_list", description: "List all Nextcloud calendars", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_calendar_get_events", description: "Get calendar events within a date range", inputSchema: { type: "object" as const, properties: { calendarId: { type: "string", description: "Calendar ID (default: personal)" }, startDate: { type: "string", description: "Start date YYYY-MM-DD (default: today)" }, endDate: { type: "string", description: "End date YYYY-MM-DD (default: 30 days from now)" } } } },
+      { name: "nc_calendar_create_event", description: "Create a new calendar event", inputSchema: { type: "object" as const, properties: { summary: { type: "string", description: "Event title" }, startDateTime: { type: "string", description: "Start ISO datetime" }, endDateTime: { type: "string", description: "End ISO datetime" }, calendarId: { type: "string", description: "Calendar ID (default: personal)" }, description: { type: "string" }, location: { type: "string" } }, required: ["summary", "startDateTime", "endDateTime"] } },
+      { name: "nc_calendar_delete_event", description: "Delete a calendar event", inputSchema: { type: "object" as const, properties: { calendarId: { type: "string", description: "Calendar ID" }, eventUid: { type: "string", description: "Event UID" } }, required: ["calendarId", "eventUid"] } },
+
+      // ── Tasks (VTODO) ──
+      { name: "nc_task_lists", description: "List all Nextcloud task lists (CalDAV VTODO-capable calendars)", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_task_get_tasks", description: "Get tasks from Nextcloud, optionally filtered by list and status", inputSchema: { type: "object" as const, properties: { listId: { type: "string", description: "Task list ID (default: all lists)" }, status: { type: "string", enum: ["all", "open", "completed"], description: "Filter by status" } } } },
+      { name: "nc_task_create", description: "Create a new task in Nextcloud", inputSchema: { type: "object" as const, properties: { summary: { type: "string", description: "Task title" }, listId: { type: "string", description: "Task list (default: personal)" }, description: { type: "string" }, due: { type: "string", description: "Due date YYYY-MM-DD" }, priority: { type: "number", description: "Priority 1-9 (1=highest)" } }, required: ["summary"] } },
+
+      // ── Contacts (CardDAV) ──
+      { name: "nc_contacts_list_addressbooks", description: "List all Nextcloud address books", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_contacts_list", description: "List contacts from a Nextcloud address book", inputSchema: { type: "object" as const, properties: { addressbookId: { type: "string", description: "Address book ID (default: contacts)" } } } },
+      { name: "nc_contacts_create", description: "Create a new contact in Nextcloud", inputSchema: { type: "object" as const, properties: { fullName: { type: "string", description: "Full name" }, addressbookId: { type: "string", description: "Address book (default: contacts)" }, email: { type: "string" }, phone: { type: "string" }, org: { type: "string", description: "Organization" } }, required: ["fullName"] } },
+      { name: "nc_contacts_delete", description: "Delete a contact from Nextcloud", inputSchema: { type: "object" as const, properties: { addressbookId: { type: "string", description: "Address book ID" }, contactUid: { type: "string", description: "Contact UID (from .vcf filename)" } }, required: ["addressbookId", "contactUid"] } },
+      { name: "nc_contacts_search", description: "Search contacts by name, email, phone, or org", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Search query" } }, required: ["query"] } },
+
+      // ── Files (WebDAV) ──
+      { name: "nc_files_list", description: "List files and folders in a Nextcloud directory", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "Directory path (default: /)", default: "/" } } } },
+      { name: "nc_files_read", description: "Read a file's content from Nextcloud", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "File path" } }, required: ["path"] } },
+      { name: "nc_files_write", description: "Write/create a file in Nextcloud", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "File path" }, content: { type: "string", description: "File content" } }, required: ["path", "content"] } },
+      { name: "nc_files_mkdir", description: "Create a directory in Nextcloud", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "Directory path" } }, required: ["path"] } },
+      { name: "nc_files_delete", description: "Delete a file or directory in Nextcloud", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "Path to delete" } }, required: ["path"] } },
+      { name: "nc_files_move", description: "Move or rename a file/folder in Nextcloud", inputSchema: { type: "object" as const, properties: { source: { type: "string", description: "Source path" }, destination: { type: "string", description: "Destination path" } }, required: ["source", "destination"] } },
+      { name: "nc_files_copy", description: "Copy a file or directory in Nextcloud", inputSchema: { type: "object" as const, properties: { source: { type: "string", description: "Source path" }, destination: { type: "string", description: "Destination path" } }, required: ["source", "destination"] } },
+      { name: "nc_files_search", description: "Search for files by name in Nextcloud", inputSchema: { type: "object" as const, properties: { query: { type: "string", description: "Search query (filename match)" }, path: { type: "string", description: "Directory to search in" } }, required: ["query"] } },
+      { name: "nc_files_favorites", description: "List favorite files in Nextcloud", inputSchema: { type: "object" as const, properties: {} } },
+
+      // ── Trashbin ──
+      { name: "nc_trash_list", description: "List files in the Nextcloud trash bin", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_trash_restore", description: "Restore a file from Nextcloud trash", inputSchema: { type: "object" as const, properties: { trashPath: { type: "string", description: "Trash item path" } }, required: ["trashPath"] } },
+      { name: "nc_trash_delete", description: "Permanently delete a file from Nextcloud trash", inputSchema: { type: "object" as const, properties: { trashPath: { type: "string", description: "Trash item path" } }, required: ["trashPath"] } },
+      { name: "nc_trash_empty", description: "Empty the entire Nextcloud trash bin", inputSchema: { type: "object" as const, properties: {} } },
+
+      // ── Deck (Kanban) ──
+      { name: "nc_deck_list_boards", description: "List all Nextcloud Deck boards", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_deck_get_board", description: "Get a specific Deck board with details", inputSchema: { type: "object" as const, properties: { boardId: { type: "number", description: "Board ID" } }, required: ["boardId"] } },
+      { name: "nc_deck_create_board", description: "Create a new Deck board", inputSchema: { type: "object" as const, properties: { title: { type: "string", description: "Board title" }, color: { type: "string", description: "Hex color (default: 0800fd)" } }, required: ["title"] } },
+      { name: "nc_deck_delete_board", description: "Delete a Deck board", inputSchema: { type: "object" as const, properties: { boardId: { type: "number", description: "Board ID" } }, required: ["boardId"] } },
+      { name: "nc_deck_list_stacks", description: "List stacks (columns) in a Deck board", inputSchema: { type: "object" as const, properties: { boardId: { type: "number", description: "Board ID" } }, required: ["boardId"] } },
+      { name: "nc_deck_create_stack", description: "Create a new stack (column) in a Deck board", inputSchema: { type: "object" as const, properties: { boardId: { type: "number", description: "Board ID" }, title: { type: "string", description: "Stack title" }, order: { type: "number" } }, required: ["boardId", "title"] } },
+      { name: "nc_deck_create_card", description: "Create a new card in a Deck stack", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, stackId: { type: "number" }, title: { type: "string", description: "Card title" }, description: { type: "string" }, duedate: { type: "string", description: "Due date YYYY-MM-DD" } }, required: ["boardId", "stackId", "title"] } },
+      { name: "nc_deck_update_card", description: "Update a Deck card", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, stackId: { type: "number" }, cardId: { type: "number" }, title: { type: "string" }, description: { type: "string" }, duedate: { type: "string" } }, required: ["boardId", "stackId", "cardId"] } },
+      { name: "nc_deck_delete_card", description: "Delete a Deck card", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, stackId: { type: "number" }, cardId: { type: "number" } }, required: ["boardId", "stackId", "cardId"] } },
+      { name: "nc_deck_move_card", description: "Move a card to a different stack", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, stackId: { type: "number", description: "Current stack" }, cardId: { type: "number" }, targetStackId: { type: "number", description: "Target stack" } }, required: ["boardId", "stackId", "cardId", "targetStackId"] } },
+      { name: "nc_deck_assign_label", description: "Assign a label to a Deck card", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, stackId: { type: "number" }, cardId: { type: "number" }, labelId: { type: "number" } }, required: ["boardId", "stackId", "cardId", "labelId"] } },
+      { name: "nc_deck_assign_user", description: "Assign a user to a Deck card", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, stackId: { type: "number" }, cardId: { type: "number" }, userId: { type: "string" } }, required: ["boardId", "stackId", "cardId", "userId"] } },
+      { name: "nc_deck_create_label", description: "Create a label on a Deck board", inputSchema: { type: "object" as const, properties: { boardId: { type: "number" }, title: { type: "string" }, color: { type: "string", description: "Hex color" } }, required: ["boardId", "title"] } },
+
+      // ── Tables ──
+      { name: "nc_tables_list", description: "List all Nextcloud Tables", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_tables_get", description: "Get a specific Nextcloud Table", inputSchema: { type: "object" as const, properties: { tableId: { type: "number" } }, required: ["tableId"] } },
+      { name: "nc_tables_get_columns", description: "Get columns/schema of a Nextcloud Table", inputSchema: { type: "object" as const, properties: { tableId: { type: "number" } }, required: ["tableId"] } },
+      { name: "nc_tables_get_rows", description: "Get rows from a Nextcloud Table", inputSchema: { type: "object" as const, properties: { tableId: { type: "number" }, limit: { type: "number", default: 50 }, offset: { type: "number", default: 0 } }, required: ["tableId"] } },
+      { name: "nc_tables_create_row", description: "Insert a new row into a Nextcloud Table", inputSchema: { type: "object" as const, properties: { tableId: { type: "number" }, data: { type: "object", description: "Column ID to value mapping" } }, required: ["tableId", "data"] } },
+      { name: "nc_tables_update_row", description: "Update a row in a Nextcloud Table", inputSchema: { type: "object" as const, properties: { rowId: { type: "number" }, data: { type: "object", description: "Column ID to value mapping" } }, required: ["rowId", "data"] } },
+      { name: "nc_tables_delete_row", description: "Delete a row from a Nextcloud Table", inputSchema: { type: "object" as const, properties: { rowId: { type: "number" } }, required: ["rowId"] } },
+
+      // ── Sharing ──
+      { name: "nc_shares_list", description: "List file/folder shares in Nextcloud", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "File/folder path to list shares for (optional)" } } } },
+      { name: "nc_shares_get", description: "Get details of a specific share", inputSchema: { type: "object" as const, properties: { shareId: { type: "number" } }, required: ["shareId"] } },
+      { name: "nc_shares_create", description: "Create a new share (0=user, 1=group, 3=public link, 4=email, 6=federated)", inputSchema: { type: "object" as const, properties: { path: { type: "string", description: "File/folder path" }, shareType: { type: "number", description: "0=user, 1=group, 3=public, 4=email, 6=federated" }, shareWith: { type: "string", description: "User/group/email to share with" }, permissions: { type: "number", description: "1=read, 2=update, 4=create, 8=delete, 16=share, 31=all" }, password: { type: "string" }, expireDate: { type: "string", description: "YYYY-MM-DD" } }, required: ["path", "shareType"] } },
+      { name: "nc_shares_update", description: "Update a share's permissions/password/expiration", inputSchema: { type: "object" as const, properties: { shareId: { type: "number" }, permissions: { type: "number" }, password: { type: "string" }, expireDate: { type: "string" } }, required: ["shareId"] } },
+      { name: "nc_shares_delete", description: "Delete a share", inputSchema: { type: "object" as const, properties: { shareId: { type: "number" } }, required: ["shareId"] } },
+
+      // ── Talk (Spreed) ──
+      { name: "nc_talk_list_conversations", description: "List all Nextcloud Talk conversations", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_talk_get_conversation", description: "Get details of a Talk conversation", inputSchema: { type: "object" as const, properties: { token: { type: "string", description: "Conversation token" } }, required: ["token"] } },
+      { name: "nc_talk_create_conversation", description: "Create a new Talk conversation (1=one-to-one, 2=group, 3=public)", inputSchema: { type: "object" as const, properties: { roomType: { type: "number", description: "1=one-to-one, 2=group, 3=public" }, roomName: { type: "string", description: "Conversation name" }, invite: { type: "string", description: "User ID to invite" } }, required: ["roomType", "roomName"] } },
+      { name: "nc_talk_get_messages", description: "Get messages from a Talk conversation", inputSchema: { type: "object" as const, properties: { token: { type: "string", description: "Conversation token" }, limit: { type: "number", default: 100 } }, required: ["token"] } },
+      { name: "nc_talk_send_message", description: "Send a message in a Talk conversation", inputSchema: { type: "object" as const, properties: { token: { type: "string", description: "Conversation token" }, message: { type: "string" }, replyTo: { type: "number", description: "Message ID to reply to" } }, required: ["token", "message"] } },
+      { name: "nc_talk_delete_message", description: "Delete a message from Talk", inputSchema: { type: "object" as const, properties: { token: { type: "string" }, messageId: { type: "number" } }, required: ["token", "messageId"] } },
+      { name: "nc_talk_get_participants", description: "Get participants of a Talk conversation", inputSchema: { type: "object" as const, properties: { token: { type: "string" } }, required: ["token"] } },
+      { name: "nc_talk_create_poll", description: "Create a poll in a Talk conversation", inputSchema: { type: "object" as const, properties: { token: { type: "string" }, question: { type: "string" }, options: { type: "array", items: { type: "string" }, description: "Poll options" }, maxVotes: { type: "number", default: 1 } }, required: ["token", "question", "options"] } },
+      { name: "nc_talk_vote_poll", description: "Vote on a Talk poll", inputSchema: { type: "object" as const, properties: { token: { type: "string" }, pollId: { type: "number" }, optionIds: { type: "array", items: { type: "number" } } }, required: ["token", "pollId", "optionIds"] } },
+      { name: "nc_talk_close_poll", description: "Close a Talk poll", inputSchema: { type: "object" as const, properties: { token: { type: "string" }, pollId: { type: "number" } }, required: ["token", "pollId"] } },
+
+      // ── Notifications ──
+      { name: "nc_notifications_list", description: "List all Nextcloud notifications", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_notifications_dismiss", description: "Dismiss a specific notification", inputSchema: { type: "object" as const, properties: { notificationId: { type: "number" } }, required: ["notificationId"] } },
+      { name: "nc_notifications_dismiss_all", description: "Dismiss all notifications", inputSchema: { type: "object" as const, properties: {} } },
+
+      // ── Activity ──
+      { name: "nc_activity", description: "Get recent Nextcloud activity feed", inputSchema: { type: "object" as const, properties: { limit: { type: "number", default: 50 }, sinceId: { type: "number", description: "Only activities after this ID" } } } },
+
+      // ── Users ──
+      { name: "nc_users_current", description: "Get current Nextcloud user info", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_users_list", description: "List Nextcloud users", inputSchema: { type: "object" as const, properties: { search: { type: "string" }, limit: { type: "number" } } } },
+      { name: "nc_users_get", description: "Get a specific Nextcloud user's info", inputSchema: { type: "object" as const, properties: { userId: { type: "string" } }, required: ["userId"] } },
+
+      // ── User Status ──
+      { name: "nc_status_get", description: "Get a user's status (or your own)", inputSchema: { type: "object" as const, properties: { userId: { type: "string", description: "User ID (optional, default: current user)" } } } },
+      { name: "nc_status_set", description: "Set your Nextcloud user status", inputSchema: { type: "object" as const, properties: { statusType: { type: "string", enum: ["online", "away", "dnd", "invisible", "offline"], description: "Status type" }, message: { type: "string", description: "Custom status message" }, icon: { type: "string", description: "Status emoji icon" } }, required: ["statusType"] } },
+      { name: "nc_status_clear", description: "Clear your Nextcloud user status", inputSchema: { type: "object" as const, properties: {} } },
+
+      // ── Search ──
+      { name: "nc_search_providers", description: "List available Nextcloud search providers", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_search", description: "Unified search across Nextcloud (files, calendar, contacts, etc.)", inputSchema: { type: "object" as const, properties: { providerId: { type: "string", description: "Search provider ID (e.g. files, calendar, contacts)" }, query: { type: "string", description: "Search query" }, limit: { type: "number", default: 20 } }, required: ["providerId", "query"] } },
+
+      // ── Mail (Nextcloud Mail app) ──
+      { name: "nc_mail_accounts", description: "List Nextcloud Mail accounts", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_mail_mailboxes", description: "List mailboxes for a Nextcloud Mail account", inputSchema: { type: "object" as const, properties: { accountId: { type: "number" } }, required: ["accountId"] } },
+      { name: "nc_mail_messages", description: "List messages in a mailbox", inputSchema: { type: "object" as const, properties: { accountId: { type: "number" }, folderId: { type: "string", description: "Folder/mailbox ID" }, limit: { type: "number", default: 20 } }, required: ["accountId", "folderId"] } },
+      { name: "nc_mail_get_message", description: "Get a specific mail message", inputSchema: { type: "object" as const, properties: { messageId: { type: "number" } }, required: ["messageId"] } },
+      { name: "nc_mail_send", description: "Send an email via Nextcloud Mail", inputSchema: { type: "object" as const, properties: { accountId: { type: "number" }, to: { type: "string" }, subject: { type: "string" }, body: { type: "string" }, cc: { type: "string" }, bcc: { type: "string" } }, required: ["accountId", "to", "subject", "body"] } },
+
+      // ── Tags ──
+      { name: "nc_tags_list", description: "List all Nextcloud system tags", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_tags_create", description: "Create a new system tag", inputSchema: { type: "object" as const, properties: { name: { type: "string" }, userVisible: { type: "boolean", default: true }, userAssignable: { type: "boolean", default: true } }, required: ["name"] } },
+      { name: "nc_tags_assign", description: "Assign a tag to a file", inputSchema: { type: "object" as const, properties: { fileId: { type: "number" }, tagId: { type: "number" } }, required: ["fileId", "tagId"] } },
+      { name: "nc_tags_unassign", description: "Remove a tag from a file", inputSchema: { type: "object" as const, properties: { fileId: { type: "number" }, tagId: { type: "number" } }, required: ["fileId", "tagId"] } },
+
+      // ── Versions ──
+      { name: "nc_versions_list", description: "List file versions (revision history)", inputSchema: { type: "object" as const, properties: { fileId: { type: "number" } }, required: ["fileId"] } },
+      { name: "nc_versions_restore", description: "Restore a previous file version", inputSchema: { type: "object" as const, properties: { fileId: { type: "number" }, versionId: { type: "string" } }, required: ["fileId", "versionId"] } },
+
+      // ── Comments ──
+      { name: "nc_comments_list", description: "List comments on a file", inputSchema: { type: "object" as const, properties: { fileId: { type: "number" } }, required: ["fileId"] } },
+      { name: "nc_comments_add", description: "Add a comment to a file", inputSchema: { type: "object" as const, properties: { fileId: { type: "number" }, message: { type: "string" } }, required: ["fileId", "message"] } },
+
+      // ── Apps Management ──
+      { name: "nc_apps_list", description: "List installed/enabled Nextcloud apps", inputSchema: { type: "object" as const, properties: { filter: { type: "string", description: "enabled, disabled, or all" } } } },
+      { name: "nc_apps_info", description: "Get info about a specific Nextcloud app", inputSchema: { type: "object" as const, properties: { appId: { type: "string" } }, required: ["appId"] } },
+      { name: "nc_apps_enable", description: "Enable a Nextcloud app", inputSchema: { type: "object" as const, properties: { appId: { type: "string" } }, required: ["appId"] } },
+      { name: "nc_apps_disable", description: "Disable a Nextcloud app", inputSchema: { type: "object" as const, properties: { appId: { type: "string" } }, required: ["appId"] } },
+
+      // ── Forms ──
+      { name: "nc_forms_list", description: "List all Nextcloud Forms", inputSchema: { type: "object" as const, properties: {} } },
+      { name: "nc_forms_get", description: "Get a specific Nextcloud Form with questions", inputSchema: { type: "object" as const, properties: { formId: { type: "number" } }, required: ["formId"] } },
+      { name: "nc_forms_submissions", description: "Get submissions for a Nextcloud Form", inputSchema: { type: "object" as const, properties: { formHash: { type: "string", description: "Form hash/slug" } }, required: ["formHash"] } },
+    ] : []),
+
   ],
 }));
 
@@ -1368,6 +1516,152 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
+    // ─── NEXTCLOUD ──────────────────────────────────────────────────────
+    if (name.startsWith('nc_') && nextcloud) {
+      const a = (args || {}) as Record<string, any>;
+      switch (name) {
+        // Notes
+        case 'nc_notes_list': return ok(JSON.stringify(await nextcloud.notesList(a.category), null, 2));
+        case 'nc_notes_get': { if (!a.noteId) return err('noteId required'); return ok(JSON.stringify(await nextcloud.notesGet(a.noteId), null, 2)); }
+        case 'nc_notes_create': { if (!a.title || !a.content) return err('title and content required'); return ok(JSON.stringify(await nextcloud.notesCreate(a.title, a.content, a.category), null, 2)); }
+        case 'nc_notes_update': { if (!a.noteId) return err('noteId required'); return ok(JSON.stringify(await nextcloud.notesUpdate(a.noteId, a.title, a.content, a.category), null, 2)); }
+        case 'nc_notes_delete': { if (!a.noteId) return err('noteId required'); return ok(JSON.stringify(await nextcloud.notesDelete(a.noteId), null, 2)); }
+        case 'nc_notes_search': { if (!a.query) return err('query required'); return ok(JSON.stringify(await nextcloud.notesSearch(a.query), null, 2)); }
+
+        // Calendar
+        case 'nc_calendar_list': return ok(JSON.stringify(await nextcloud.calendarListCalendars(), null, 2));
+        case 'nc_calendar_get_events': return ok(JSON.stringify(await nextcloud.calendarGetEvents(a.calendarId, a.startDate, a.endDate), null, 2));
+        case 'nc_calendar_create_event': { if (!a.summary || !a.startDateTime || !a.endDateTime) return err('summary, startDateTime, endDateTime required'); return ok(JSON.stringify(await nextcloud.calendarCreateEvent(a.summary, a.startDateTime, a.endDateTime, a.calendarId, a.description, a.location), null, 2)); }
+        case 'nc_calendar_delete_event': { if (!a.calendarId || !a.eventUid) return err('calendarId and eventUid required'); return ok(JSON.stringify(await nextcloud.calendarDeleteEvent(a.calendarId, a.eventUid), null, 2)); }
+
+        // Tasks
+        case 'nc_task_lists': return ok(JSON.stringify(await nextcloud.taskListLists(), null, 2));
+        case 'nc_task_get_tasks': return ok(JSON.stringify(await nextcloud.taskGetTasks(a.listId, a.status), null, 2));
+        case 'nc_task_create': { if (!a.summary) return err('summary required'); return ok(JSON.stringify(await nextcloud.taskCreate(a.summary, a.listId, a.description, a.due, a.priority), null, 2)); }
+
+        // Contacts
+        case 'nc_contacts_list_addressbooks': return ok(JSON.stringify(await nextcloud.contactsListAddressbooks(), null, 2));
+        case 'nc_contacts_list': return ok(JSON.stringify(await nextcloud.contactsListContacts(a.addressbookId), null, 2));
+        case 'nc_contacts_create': { if (!a.fullName) return err('fullName required'); return ok(JSON.stringify(await nextcloud.contactsCreateContact(a.addressbookId || 'contacts', a.fullName, a.email, a.phone, a.org), null, 2)); }
+        case 'nc_contacts_delete': { if (!a.addressbookId || !a.contactUid) return err('addressbookId and contactUid required'); return ok(JSON.stringify(await nextcloud.contactsDeleteContact(a.addressbookId, a.contactUid), null, 2)); }
+        case 'nc_contacts_search': { if (!a.query) return err('query required'); return ok(JSON.stringify(await nextcloud.contactsSearch(a.query), null, 2)); }
+
+        // Files
+        case 'nc_files_list': return ok(JSON.stringify(await nextcloud.filesListDirectory(a.path), null, 2));
+        case 'nc_files_read': { if (!a.path) return err('path required'); const content = await nextcloud.filesReadFile(a.path); return ok(typeof content === 'string' ? content : JSON.stringify(content)); }
+        case 'nc_files_write': { if (!a.path || a.content === undefined) return err('path and content required'); return ok(JSON.stringify(await nextcloud.filesWriteFile(a.path, a.content), null, 2)); }
+        case 'nc_files_mkdir': { if (!a.path) return err('path required'); return ok(JSON.stringify(await nextcloud.filesCreateDirectory(a.path), null, 2)); }
+        case 'nc_files_delete': { if (!a.path) return err('path required'); return ok(JSON.stringify(await nextcloud.filesDeleteResource(a.path), null, 2)); }
+        case 'nc_files_move': { if (!a.source || !a.destination) return err('source and destination required'); return ok(JSON.stringify(await nextcloud.filesMoveResource(a.source, a.destination), null, 2)); }
+        case 'nc_files_copy': { if (!a.source || !a.destination) return err('source and destination required'); return ok(JSON.stringify(await nextcloud.filesCopyResource(a.source, a.destination), null, 2)); }
+        case 'nc_files_search': { if (!a.query) return err('query required'); return ok(JSON.stringify(await nextcloud.filesSearch(a.query, a.path), null, 2)); }
+        case 'nc_files_favorites': return ok(JSON.stringify(await nextcloud.filesListFavorites(), null, 2));
+
+        // Trashbin
+        case 'nc_trash_list': return ok(JSON.stringify(await nextcloud.trashbinList(), null, 2));
+        case 'nc_trash_restore': { if (!a.trashPath) return err('trashPath required'); return ok(JSON.stringify(await nextcloud.trashbinRestore(a.trashPath), null, 2)); }
+        case 'nc_trash_delete': { if (!a.trashPath) return err('trashPath required'); return ok(JSON.stringify(await nextcloud.trashbinDelete(a.trashPath), null, 2)); }
+        case 'nc_trash_empty': return ok(JSON.stringify(await nextcloud.trashbinEmpty(), null, 2));
+
+        // Deck
+        case 'nc_deck_list_boards': return ok(JSON.stringify(await nextcloud.deckListBoards(), null, 2));
+        case 'nc_deck_get_board': { if (!a.boardId) return err('boardId required'); return ok(JSON.stringify(await nextcloud.deckGetBoard(a.boardId), null, 2)); }
+        case 'nc_deck_create_board': { if (!a.title) return err('title required'); return ok(JSON.stringify(await nextcloud.deckCreateBoard(a.title, a.color), null, 2)); }
+        case 'nc_deck_delete_board': { if (!a.boardId) return err('boardId required'); return ok(JSON.stringify(await nextcloud.deckDeleteBoard(a.boardId), null, 2)); }
+        case 'nc_deck_list_stacks': { if (!a.boardId) return err('boardId required'); return ok(JSON.stringify(await nextcloud.deckListStacks(a.boardId), null, 2)); }
+        case 'nc_deck_create_stack': { if (!a.boardId || !a.title) return err('boardId and title required'); return ok(JSON.stringify(await nextcloud.deckCreateStack(a.boardId, a.title, a.order), null, 2)); }
+        case 'nc_deck_create_card': { if (!a.boardId || !a.stackId || !a.title) return err('boardId, stackId, title required'); return ok(JSON.stringify(await nextcloud.deckCreateCard(a.boardId, a.stackId, a.title, a.description, a.duedate), null, 2)); }
+        case 'nc_deck_update_card': { if (!a.boardId || !a.stackId || !a.cardId) return err('boardId, stackId, cardId required'); return ok(JSON.stringify(await nextcloud.deckUpdateCard(a.boardId, a.stackId, a.cardId, a.title, a.description, a.duedate), null, 2)); }
+        case 'nc_deck_delete_card': { if (!a.boardId || !a.stackId || !a.cardId) return err('boardId, stackId, cardId required'); return ok(JSON.stringify(await nextcloud.deckDeleteCard(a.boardId, a.stackId, a.cardId), null, 2)); }
+        case 'nc_deck_move_card': { if (!a.boardId || !a.stackId || !a.cardId || !a.targetStackId) return err('boardId, stackId, cardId, targetStackId required'); return ok(JSON.stringify(await nextcloud.deckMoveCard(a.boardId, a.stackId, a.cardId, a.targetStackId), null, 2)); }
+        case 'nc_deck_assign_label': { if (!a.boardId || !a.stackId || !a.cardId || !a.labelId) return err('boardId, stackId, cardId, labelId required'); return ok(JSON.stringify(await nextcloud.deckAssignLabel(a.boardId, a.stackId, a.cardId, a.labelId), null, 2)); }
+        case 'nc_deck_assign_user': { if (!a.boardId || !a.stackId || !a.cardId || !a.userId) return err('boardId, stackId, cardId, userId required'); return ok(JSON.stringify(await nextcloud.deckAssignUser(a.boardId, a.stackId, a.cardId, a.userId), null, 2)); }
+        case 'nc_deck_create_label': { if (!a.boardId || !a.title) return err('boardId and title required'); return ok(JSON.stringify(await nextcloud.deckCreateLabel(a.boardId, a.title, a.color), null, 2)); }
+
+        // Tables
+        case 'nc_tables_list': return ok(JSON.stringify(await nextcloud.tablesListTables(), null, 2));
+        case 'nc_tables_get': { if (!a.tableId) return err('tableId required'); return ok(JSON.stringify(await nextcloud.tablesGetTable(a.tableId), null, 2)); }
+        case 'nc_tables_get_columns': { if (!a.tableId) return err('tableId required'); return ok(JSON.stringify(await nextcloud.tablesGetColumns(a.tableId), null, 2)); }
+        case 'nc_tables_get_rows': { if (!a.tableId) return err('tableId required'); return ok(JSON.stringify(await nextcloud.tablesGetRows(a.tableId, a.limit, a.offset), null, 2)); }
+        case 'nc_tables_create_row': { if (!a.tableId || !a.data) return err('tableId and data required'); return ok(JSON.stringify(await nextcloud.tablesCreateRow(a.tableId, a.data), null, 2)); }
+        case 'nc_tables_update_row': { if (!a.rowId || !a.data) return err('rowId and data required'); return ok(JSON.stringify(await nextcloud.tablesUpdateRow(a.rowId, a.data), null, 2)); }
+        case 'nc_tables_delete_row': { if (!a.rowId) return err('rowId required'); return ok(JSON.stringify(await nextcloud.tablesDeleteRow(a.rowId), null, 2)); }
+
+        // Sharing
+        case 'nc_shares_list': return ok(JSON.stringify(await nextcloud.sharesList(a.path), null, 2));
+        case 'nc_shares_get': { if (!a.shareId) return err('shareId required'); return ok(JSON.stringify(await nextcloud.sharesGet(a.shareId), null, 2)); }
+        case 'nc_shares_create': { if (!a.path || a.shareType === undefined) return err('path and shareType required'); return ok(JSON.stringify(await nextcloud.sharesCreate(a.path, a.shareType, a.shareWith, a.permissions, a.password, a.expireDate), null, 2)); }
+        case 'nc_shares_update': { if (!a.shareId) return err('shareId required'); return ok(JSON.stringify(await nextcloud.sharesUpdate(a.shareId, a.permissions, a.password, a.expireDate), null, 2)); }
+        case 'nc_shares_delete': { if (!a.shareId) return err('shareId required'); return ok(JSON.stringify(await nextcloud.sharesDelete(a.shareId), null, 2)); }
+
+        // Talk
+        case 'nc_talk_list_conversations': return ok(JSON.stringify(await nextcloud.talkListConversations(), null, 2));
+        case 'nc_talk_get_conversation': { if (!a.token) return err('token required'); return ok(JSON.stringify(await nextcloud.talkGetConversation(a.token), null, 2)); }
+        case 'nc_talk_create_conversation': { if (!a.roomType || !a.roomName) return err('roomType and roomName required'); return ok(JSON.stringify(await nextcloud.talkCreateConversation(a.roomType, a.roomName, a.invite), null, 2)); }
+        case 'nc_talk_get_messages': { if (!a.token) return err('token required'); return ok(JSON.stringify(await nextcloud.talkGetMessages(a.token, a.limit), null, 2)); }
+        case 'nc_talk_send_message': { if (!a.token || !a.message) return err('token and message required'); return ok(JSON.stringify(await nextcloud.talkSendMessage(a.token, a.message, a.replyTo), null, 2)); }
+        case 'nc_talk_delete_message': { if (!a.token || !a.messageId) return err('token and messageId required'); return ok(JSON.stringify(await nextcloud.talkDeleteMessage(a.token, a.messageId), null, 2)); }
+        case 'nc_talk_get_participants': { if (!a.token) return err('token required'); return ok(JSON.stringify(await nextcloud.talkGetParticipants(a.token), null, 2)); }
+        case 'nc_talk_create_poll': { if (!a.token || !a.question || !a.options) return err('token, question, options required'); return ok(JSON.stringify(await nextcloud.talkCreatePoll(a.token, a.question, a.options, a.maxVotes), null, 2)); }
+        case 'nc_talk_vote_poll': { if (!a.token || !a.pollId || !a.optionIds) return err('token, pollId, optionIds required'); return ok(JSON.stringify(await nextcloud.talkVotePoll(a.token, a.pollId, a.optionIds), null, 2)); }
+        case 'nc_talk_close_poll': { if (!a.token || !a.pollId) return err('token and pollId required'); return ok(JSON.stringify(await nextcloud.talkClosePoll(a.token, a.pollId), null, 2)); }
+
+        // Notifications
+        case 'nc_notifications_list': return ok(JSON.stringify(await nextcloud.notificationsList(), null, 2));
+        case 'nc_notifications_dismiss': { if (!a.notificationId) return err('notificationId required'); return ok(JSON.stringify(await nextcloud.notificationsDismiss(a.notificationId), null, 2)); }
+        case 'nc_notifications_dismiss_all': return ok(JSON.stringify(await nextcloud.notificationsDismissAll(), null, 2));
+
+        // Activity
+        case 'nc_activity': return ok(JSON.stringify(await nextcloud.activityGet(a.limit, a.sinceId), null, 2));
+
+        // Users
+        case 'nc_users_current': return ok(JSON.stringify(await nextcloud.usersGetCurrent(), null, 2));
+        case 'nc_users_list': return ok(JSON.stringify(await nextcloud.usersList(a.search, a.limit), null, 2));
+        case 'nc_users_get': { if (!a.userId) return err('userId required'); return ok(JSON.stringify(await nextcloud.usersGet(a.userId), null, 2)); }
+
+        // User Status
+        case 'nc_status_get': return ok(JSON.stringify(await nextcloud.userStatusGet(a.userId), null, 2));
+        case 'nc_status_set': { if (!a.statusType) return err('statusType required'); return ok(JSON.stringify(await nextcloud.userStatusSet(a.statusType, a.message, a.icon), null, 2)); }
+        case 'nc_status_clear': return ok(JSON.stringify(await nextcloud.userStatusClear(), null, 2));
+
+        // Search
+        case 'nc_search_providers': return ok(JSON.stringify(await nextcloud.searchProviders(), null, 2));
+        case 'nc_search': { if (!a.providerId || !a.query) return err('providerId and query required'); return ok(JSON.stringify(await nextcloud.unifiedSearch(a.providerId, a.query, a.limit), null, 2)); }
+
+        // Mail
+        case 'nc_mail_accounts': return ok(JSON.stringify(await nextcloud.mailListAccounts(), null, 2));
+        case 'nc_mail_mailboxes': { if (!a.accountId) return err('accountId required'); return ok(JSON.stringify(await nextcloud.mailListMailboxes(a.accountId), null, 2)); }
+        case 'nc_mail_messages': { if (!a.accountId || !a.folderId) return err('accountId and folderId required'); return ok(JSON.stringify(await nextcloud.mailListMessages(a.accountId, a.folderId, a.limit), null, 2)); }
+        case 'nc_mail_get_message': { if (!a.messageId) return err('messageId required'); return ok(JSON.stringify(await nextcloud.mailGetMessage(a.messageId), null, 2)); }
+        case 'nc_mail_send': { if (!a.accountId || !a.to || !a.subject || !a.body) return err('accountId, to, subject, body required'); return ok(JSON.stringify(await nextcloud.mailSend(a.accountId, a.to, a.subject, a.body, a.cc, a.bcc), null, 2)); }
+
+        // Tags
+        case 'nc_tags_list': return ok(JSON.stringify(await nextcloud.tagsList(), null, 2));
+        case 'nc_tags_create': { if (!a.name) return err('name required'); return ok(JSON.stringify(await nextcloud.tagsCreate(a.name, a.userVisible, a.userAssignable), null, 2)); }
+        case 'nc_tags_assign': { if (!a.fileId || !a.tagId) return err('fileId and tagId required'); return ok(JSON.stringify(await nextcloud.tagsAssign(a.fileId, a.tagId), null, 2)); }
+        case 'nc_tags_unassign': { if (!a.fileId || !a.tagId) return err('fileId and tagId required'); return ok(JSON.stringify(await nextcloud.tagsUnassign(a.fileId, a.tagId), null, 2)); }
+
+        // Versions
+        case 'nc_versions_list': { if (!a.fileId) return err('fileId required'); return ok(JSON.stringify(await nextcloud.versionsList(a.fileId), null, 2)); }
+        case 'nc_versions_restore': { if (!a.fileId || !a.versionId) return err('fileId and versionId required'); return ok(JSON.stringify(await nextcloud.versionsRestore(a.fileId, a.versionId), null, 2)); }
+
+        // Comments
+        case 'nc_comments_list': { if (!a.fileId) return err('fileId required'); return ok(JSON.stringify(await nextcloud.commentsList(a.fileId), null, 2)); }
+        case 'nc_comments_add': { if (!a.fileId || !a.message) return err('fileId and message required'); return ok(JSON.stringify(await nextcloud.commentsAdd(a.fileId, a.message), null, 2)); }
+
+        // Apps
+        case 'nc_apps_list': return ok(JSON.stringify(await nextcloud.appsList(a.filter), null, 2));
+        case 'nc_apps_info': { if (!a.appId) return err('appId required'); return ok(JSON.stringify(await nextcloud.appsGetInfo(a.appId), null, 2)); }
+        case 'nc_apps_enable': { if (!a.appId) return err('appId required'); return ok(JSON.stringify(await nextcloud.appsEnable(a.appId), null, 2)); }
+        case 'nc_apps_disable': { if (!a.appId) return err('appId required'); return ok(JSON.stringify(await nextcloud.appsDisable(a.appId), null, 2)); }
+
+        // Forms
+        case 'nc_forms_list': return ok(JSON.stringify(await nextcloud.formsList(), null, 2));
+        case 'nc_forms_get': { if (!a.formId) return err('formId required'); return ok(JSON.stringify(await nextcloud.formsGet(a.formId), null, 2)); }
+        case 'nc_forms_submissions': { if (!a.formHash) return err('formHash required'); return ok(JSON.stringify(await nextcloud.formsGetSubmissions(a.formHash), null, 2)); }
+      }
+    }
+
     return err(`Unknown tool: ${name}`);
   } catch (error: any) {
     logger.error(`Tool ${name} failed: ${error?.message || error}`, 'CallTool');
@@ -1377,7 +1671,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 async function main() {
-  logger.info('Starting Garza MCP Server v5 (Mail + Drive + iCloud + Beeper + FabricAI + Quo + Voicenotes)...', 'Main');
+  logger.info('Starting Garza MCP Server v6 (Mail + Drive + iCloud + Beeper + FabricAI + Quo + Voicenotes + Nextcloud)...', 'Main');
   logger.info(`Mail user: ${PROTONMAIL_USERNAME}`, 'Main');
   logger.info(`Proton Drive: ${PROTON_DRIVE_PATH}`, 'Main');
   logger.info(`iCloud Drive: ${ICLOUD_DRIVE_PATH}`, 'Main');
@@ -1386,6 +1680,7 @@ async function main() {
   if (fabric) logger.info(`Fabric AI: ${FABRIC_API_URL}`, 'Main');
   if (quo) logger.info('Quo (OpenPhone): connected', 'Main');
   if (voicenotes) logger.info('Voicenotes: connected', 'Main');
+  if (nextcloud) logger.info(`Nextcloud: ${NEXTCLOUD_URL}`, 'Main');
 
 
   const transport = new StdioServerTransport();
