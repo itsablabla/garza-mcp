@@ -1,8 +1,17 @@
-name: Deploy to Mac Mini
+name: Deploy to Fly.io
 
 on:
   push:
     branches: [main]
+    paths:
+      - "garza_mcp/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "README.md"
+      - "Dockerfile"
+      - "fly.toml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,44 +23,36 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Verify tool registration
         run: |
-          uv run python -c "
+          uv run python - <<'PY'
           from garza_mcp.server import mcp
           tools = mcp._tool_manager._tools
-          assert len(tools) == 178, f'Expected 178 tools, got {len(tools)}'
-          print(f'All {len(tools)} tools registered successfully')
-          "
+          assert len(tools) == 178, f"Expected 178 tools, got {len(tools)}"
+          print(f"All {len(tools)} tools registered successfully")
+          PY
 
-      - name: Package Python code
-        run: tar czf /tmp/garza-mcp-python.tar.gz garza_mcp/ pyproject.toml uv.lock
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy to Mac Mini
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.MAC_MINI_HOST }}
-          username: ${{ secrets.MAC_MINI_USER }}
-          password: ${{ secrets.MAC_MINI_PASSWORD }}
-          source: "garza_mcp/,pyproject.toml,uv.lock"
-          target: "/Users/customer/garza-mcp-python/"
-          overwrite: true
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --ha=false --app mcpx-garza
 
-      - name: Restart MCP Server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.MAC_MINI_HOST }}
-          username: ${{ secrets.MAC_MINI_USER }}
-          password: ${{ secrets.MAC_MINI_PASSWORD }}
-          script: |
-            export PATH="$HOME/.local/bin:$PATH"
-            cd /Users/customer/garza-mcp-python
-            uv sync
-            # Restart via LaunchAgent
-            launchctl unload ~/Library/LaunchAgents/com.garza.mcp-python.plist 2>/dev/null || true
-            sleep 2
-            launchctl load ~/Library/LaunchAgents/com.garza.mcp-python.plist
-            sleep 5
-            # Verify server is running
-            curl -s http://localhost:3104/health
+      - name: Health check
+        run: |
+          sleep 10
+          for url in "https://mcpx.garza.online" "https://mcpx-garza.fly.dev"; do
+            for i in 1 2 3 4 5; do
+              if curl -fsS "$url/health"; then
+                echo "Health check passed at $url"
+                exit 0
+              fi
+              sleep 5
+            done
+          done
+          echo "Health check failed for all known URLs"
+          exit 1
