@@ -9,7 +9,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md sitecustomize.py ./
 COPY garza_mcp ./garza_mcp
 
 RUN uv sync --frozen --no-dev
