@@ -8,6 +8,11 @@ primary_region = "iad"
   SERVER_HOST = "0.0.0.0"
   SERVER_PORT = "3104"
 
+[[mounts]]
+  source = "mcpx_data"
+  destination = "/data"
+  processes = ["app"]
+
 [http_service]
   internal_port = 3104
   force_https = true
